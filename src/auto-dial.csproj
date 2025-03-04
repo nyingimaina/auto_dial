@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>auto_dial</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>auto_dial</AssemblyName>
+    <Authors>Nyingi Maina</Authors>
+    <Company>Jattac Computing Company</Company>
+    <Version>1.0.0</Version>
+    <Description>A library to take away the mundane task of always manually configuring dependency injection for you dotnet apps.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+
+</Project>

@@ -1,0 +1,19 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace auto_dial
+{
+    public static class AutoDialRegistrar
+    {
+        /// <summary>
+        /// Fluent API for registering services with DI.
+        /// </summary>
+        public static AutoDialRegistrationBuilder PrimeServicesForAutoRegistration(this IServiceCollection services)
+        {
+            return new AutoDialRegistrationBuilder(services);
+        }
+    }
+}
