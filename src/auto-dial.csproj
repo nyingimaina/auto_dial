@@ -8,7 +8,7 @@
     <AssemblyName>auto_dial</AssemblyName>
     <Authors>Nyingi Maina</Authors>
     <Company>Jattac Computing Company</Company>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Description>A library to take away the mundane task of always manually configuring dependency injection for you dotnet apps.</Description>
   </PropertyGroup>
 
