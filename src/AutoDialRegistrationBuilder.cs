@@ -19,8 +19,8 @@ namespace auto_dial
             IServiceCollection services)
         {
             this.services = services;
-            assembly = Assembly.GetExecutingAssembly(); // Default to the executing assembly
-            namespacePrefix = assembly.GetName().Name!; // Default to the namespace of the executing assembly
+            assembly = Assembly.GetCallingAssembly(); // Use the calling assembly, not the executing one
+            namespacePrefix = assembly.GetName().Name!; // Default to the namespace of the executing assembly, can be overridden
         }
 
         /// <summary>
@@ -28,7 +28,7 @@ namespace auto_dial
         /// </summary>
         public AutoDialRegistrationBuilder FromAssemblyOf<T>()
         {
-            assembly = Assembly.GetAssembly(typeof(T))!;
+            assembly = Assembly.GetAssembly(typeof(T)) ?? throw new InvalidOperationException($"Could not resolve assembly for {typeof(T).FullName}");
             return this;
         }
 
@@ -54,6 +54,7 @@ namespace auto_dial
             }
             return this;
         }
+        
         public AutoDialRegistrationBuilder ExcludeInterfaces(params Type[] types)
         {
             foreach (var type in types)
@@ -88,7 +89,6 @@ namespace auto_dial
                         candidate.ServiceType.Namespace.StartsWith(namespacePrefix))
                 .ToList();
 
-
             var implementations = types.Where(t => t.IsClass && !t.IsAbstract)
                 .Select(t => new
                 {
@@ -110,6 +110,7 @@ namespace auto_dial
                     ExcludeFromDI = HasExcludeAttribute(t) // Check if the class should be excluded
                 })
                 .ToList();
+
             implementations = implementations
                 .Where(x =>
                 {
@@ -122,6 +123,7 @@ namespace auto_dial
                         });
                         if (isAlreadyRegistered == false)
                         {
+                            // If the service isn't already registered, log a message
                             Console.WriteLine($"Service not registered : {x.Interface!.Name}");
                             return true;
                         }
@@ -136,7 +138,6 @@ namespace auto_dial
                 {
                     continue;
                 }
-
 
                 // Register based on the lifetime specified by the attribute
                 switch (implementation.Lifetime)

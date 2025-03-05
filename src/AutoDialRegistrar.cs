@@ -11,9 +11,16 @@ namespace auto_dial
         /// <summary>
         /// Fluent API for registering services with DI.
         /// </summary>
-        public static AutoDialRegistrationBuilder PrimeServicesForAutoRegistration(this IServiceCollection services)
+        public static AutoDialRegistrationBuilder PrimeServicesForAutoRegistration(
+            this IServiceCollection services,
+            Action<AutoDialRegistrationBuilder>? action = null)
         {
-            return new AutoDialRegistrationBuilder(services);
+            var builder = new AutoDialRegistrationBuilder(services);
+            if (action != null)
+            {
+                action(builder);
+            }
+            return builder;
         }
     }
 }
