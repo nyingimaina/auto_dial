@@ -73,12 +73,14 @@ namespace auto_dial
             if (assembly == null)
                 throw new InvalidOperationException("Assembly must be specified using FromAssemblyOf<T>.");
 
+            var trimmedNamespacePrefix = namespacePrefix.TrimEnd('.');
+
             var types = assembly.GetTypes()
                 .Where(t =>
                 {
                     if (t.Namespace != null)
                     {
-                        return t.Namespace.StartsWith(namespacePrefix);
+                        return t.Namespace.StartsWith(trimmedNamespacePrefix, StringComparison.OrdinalIgnoreCase);
                     }
                     return false;
                 })
