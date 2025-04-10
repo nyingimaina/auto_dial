@@ -40,7 +40,7 @@ namespace auto_dial
             this.namespacePrefix = namespacePrefix;
             return this;
         }
-        
+
         public AutoDialRegistrationBuilder ExcludeInterface<T>()
         {
             return ExcludeInterface(typeof(T));
@@ -54,7 +54,7 @@ namespace auto_dial
             }
             return this;
         }
-        
+
         public AutoDialRegistrationBuilder ExcludeInterfaces(params Type[] types)
         {
             foreach (var type in types)
@@ -107,7 +107,9 @@ namespace auto_dial
                         return isExcluded == false;
                     }),
                     Lifetime = GetServiceLifetime(t), // Determine the lifetime from the class attributes
-                    ExcludeFromDI = HasExcludeAttribute(t) // Check if the class should be excluded
+                    ExcludeFromDI = HasExcludeAttribute(t)
+                        || ImplementationIsAbstract(t)
+                        || ImplementationIsInterface(t)
                 })
                 .ToList();
 
@@ -175,6 +177,15 @@ namespace auto_dial
         private bool HasExcludeAttribute(Type implementationType)
         {
             return implementationType.GetCustomAttributes(typeof(ExcludeFromDIAttribute), false).Any();
+        }
+        
+        private bool ImplementationIsAbstract(Type implementationType)
+        {
+            return implementationType.IsAbstract;
+        }
+        private bool ImplementationIsInterface(Type implementationType)
+        {
+            return implementationType.IsInterface;
         }
     }
 }
