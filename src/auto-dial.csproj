@@ -8,7 +8,7 @@
     <AssemblyName>auto_dial</AssemblyName>
     <Authors>Nyingi Maina</Authors>
     <Company>Jattac Computing Company</Company>
-    <Version>1.0.5</Version>
+    <Version>1.1.0</Version>
     <Description>A library to take away the mundane task of always manually configuring dependency injection for you dotnet apps.</Description>
     <RepositoryUrl>https://github.com/nyingimaina/auto_dial</RepositoryUrl>
     <PackageTags>dependency-injection, auto-registration, DI, .NET, .NET-8, service-registration, IoC, inversion-of-control, automatic-dependency-injection, constructor-injection, service-lifetime, scoped-services, singleton-services, transient-services, .NET-library, IoC-container, service-factory, type-registration, DI-container, framework, extensibility</PackageTags>

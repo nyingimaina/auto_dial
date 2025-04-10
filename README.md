@@ -1,37 +1,60 @@
 # auto_dial
 
-`auto_dial` is a library designed to simplify the Dependency Injection (DI) setup in .NET applications. It reduces the boilerplate code required to register services by automatically scanning assemblies and namespaces to register them based on their interfaces. This library is useful for developers who want to streamline their DI configuration process, ensuring that all services are registered correctly with minimal effort.
+`auto_dial` is a library that makes setting up Dependency Injection (DI) in .NET applications super easy. Instead of writing a lot of repetitive code to register your services, `auto_dial` does it for you automatically. It scans your code, finds the services, and registers them with the DI container. This saves time and reduces mistakes.
 
-## Why It's Valuable
+## Why Use auto_dial?
 
-- **Reduced Boilerplate**: Automatically registers services based on namespaces and interfaces, reducing the manual setup and potential for human error.
-- **Flexible Configuration**: Supports assembly and namespace-based filtering, allowing you to register only relevant services.
-- **Customizable Exclusion**: Easily exclude specific services from DI registration using attributes, ensuring more control over the process.
-- **Multiple Service Lifetimes**: Supports different lifetimes (Singleton, Scoped, Transient), making it easy to configure how services are instantiated.
+- **Less Repetitive Code**: You don't have to manually register every service in your application.
+- **Flexible**: You can control which services are registered by filtering based on namespaces or assemblies.
+- **Customizable**: You can exclude specific services from being registered if needed.
+- **Supports Different Lifetimes**: Easily configure services as Singleton, Scoped, or Transient.
 
-## Installation
+## What is Dependency Injection (DI)?
 
-To use `auto_dial` in your project, add the NuGet package:
+Dependency Injection is a way to manage the dependencies (like services or classes) that your application needs. Instead of creating these dependencies manually, DI allows you to "inject" them into your classes. This makes your code cleaner, easier to test, and more maintainable.
+
+For example:
+
+```csharp
+public class MyClass
+{
+    private readonly IMyService _myService;
+
+    public MyClass(IMyService myService)
+    {
+        _myService = myService; // The service is injected here
+    }
+
+    public void DoSomething()
+    {
+        _myService.DoWork();
+    }
+}
+```
+
+With DI, you don't have to worry about creating `IMyService`. The DI container does it for you.
+
+---
+
+## Getting Started
+
+### Step 1: Install the Library
+
+First, add the `auto_dial` library to your project using NuGet. Open your terminal and run:
 
 ```bash
 dotnet add package auto_dial
 ```
 
-## Usage
+This will download and add the library to your project.
 
-1. **Prime the DI container** using the `PrimeServicesForAutoRegistration` extension.
-2. **Use Fluent API** to configure the registration.
-3. **Complete the auto-registration** process with `CompleteAutoRegistration()`.
+---
 
-### Example
+### Step 2: Set Up Your Services
 
-Here’s an example of how to use `auto_dial` for automatic DI registration:
+Let’s say you have a service like this:
 
 ```csharp
-using Microsoft.Extensions.DependencyInjection;
-using auto_dial;
-using System;
-
 public interface IMyService
 {
     void DoWork();
@@ -41,7 +64,163 @@ public class MyService : IMyService
 {
     public void DoWork()
     {
-        Console.WriteLine("Service is working!");
+        Console.WriteLine("MyService is working!");
+    }
+}
+```
+
+And you want to use this service in another class:
+
+```csharp
+public class ConsumerClass
+{
+    private readonly IMyService _myService;
+
+    public ConsumerClass(IMyService myService)
+    {
+        _myService = myService;
+    }
+
+    public void Execute()
+    {
+        _myService.DoWork();
+    }
+}
+```
+
+Normally, you would have to manually register `IMyService` and `MyService` in the DI container. But with `auto_dial`, this is done automatically!
+
+---
+
+### Step 3: Use auto_dial to Register Services
+
+Here’s how you can use `auto_dial` to automatically register your services:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using auto_dial;
+
+class Program
+{
+    static void Main()
+    {
+        var services = new ServiceCollection();
+
+        // Automatically register services in the same assembly
+        services.PrimeServicesForAutoRegistration()
+            .FromAssemblyOf<MyService>() // Scan the assembly containing MyService
+            .CompleteAutoRegistration(); // Automatically register services
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Resolve and use ConsumerClass
+        var consumer = serviceProvider.GetRequiredService<ConsumerClass>();
+        consumer.Execute();
+    }
+}
+```
+
+---
+
+## How It Works
+
+1. **`PrimeServicesForAutoRegistration()`**: Prepares the DI container for auto-registration.
+2. **`FromAssemblyOf<T>()`**: Tells `auto_dial` to scan the assembly containing the specified type (`MyService` in this case).
+3. **`CompleteAutoRegistration()`**: Automatically registers all services found in the assembly.
+
+---
+
+## Configuration Options
+
+`auto_dial` gives you several options to customize how services are registered:
+
+### 1. Register Services from a Specific Assembly
+
+Use `FromAssemblyOf<T>()` to scan a specific assembly for services.
+
+```csharp
+services.PrimeServicesForAutoRegistration()
+    .FromAssemblyOf<MyService>()
+    .CompleteAutoRegistration();
+```
+
+### 2. Filter Services by Namespace
+
+If you only want to register services from a specific namespace, use `InNamespaceStartingWith()`:
+
+```csharp
+services.PrimeServicesForAutoRegistration()
+    .FromAssemblyOf<MyService>()
+    .InNamespaceStartingWith("MyApp.Services")
+    .CompleteAutoRegistration();
+```
+
+### 3. Exclude Specific Interfaces
+
+You can exclude certain interfaces from being registered:
+
+```csharp
+services.PrimeServicesForAutoRegistration()
+    .FromAssemblyOf<MyService>()
+    .ExcludeInterface<IMyService>() // Exclude IMyService
+    .CompleteAutoRegistration();
+```
+
+Or exclude multiple interfaces:
+
+```csharp
+services.PrimeServicesForAutoRegistration()
+    .FromAssemblyOf<MyService>()
+    .ExcludeInterfaces(typeof(IMyService), typeof(IOtherService))
+    .CompleteAutoRegistration();
+```
+
+---
+
+## Supported Service Lifetimes
+
+When registering services, you can specify how they should be instantiated:
+
+- **Singleton**: One instance for the entire application.
+- **Scoped**: One instance per request (useful for web apps).
+- **Transient**: A new instance every time the service is requested.
+
+To specify a lifetime, use the `[ServiceLifetime]` attribute on your class:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+
+[ServiceLifetime(ServiceLifetime.Singleton)]
+public class MySingletonService : IMyService
+{
+    public void DoWork()
+    {
+        Console.WriteLine("Singleton service is working!");
+    }
+}
+```
+
+---
+
+## Example: Full Setup
+
+Here’s a complete example:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using auto_dial;
+
+public interface IMyService
+{
+    void DoWork();
+}
+
+[ServiceLifetime(ServiceLifetime.Singleton)]
+public class MyService : IMyService
+{
+    public void DoWork()
+    {
+        Console.WriteLine("MyService is working!");
     }
 }
 
@@ -66,43 +245,35 @@ class Program
     {
         var services = new ServiceCollection();
 
-        // Automatically register services in the same assembly
+        // Automatically register services
         services.PrimeServicesForAutoRegistration()
             .FromAssemblyOf<MyService>()
             .CompleteAutoRegistration();
 
         var serviceProvider = services.BuildServiceProvider();
 
-        // Resolve and use ConsumerClass
+        // Use the service
         var consumer = serviceProvider.GetRequiredService<ConsumerClass>();
         consumer.Execute();
     }
 }
 ```
 
-### How It Works
+---
 
-- **`PrimeServicesForAutoRegistration()`**: Prepares the DI container for auto-registration.
-- **`FromAssemblyOf<T>()`**: Filters services from the specified assembly.
-- **`CompleteAutoRegistration()`**: Registers all services automatically based on your configuration.
+## Troubleshooting
 
-## Configuration Options
+- **Service Not Registered**: Make sure the service is in the correct namespace or assembly being scanned.
+- **Exclude Attribute**: If a service is not being registered, check if it has the `[ExcludeFromDI]` attribute.
 
-- **`FromAssemblyOf<T>()`**: Register services from a specific assembly.
-- **`InNamespaceStartingWith(string namespacePrefix)`**: Filter services by a namespace prefix.
-- **`ExcludeInterface<T>()`**: Exclude specific interfaces from being registered.
-- **`ExcludeInterfaces(params Type[] types)`**: Exclude multiple interfaces at once.
-
-## Supported Service Lifetimes
-
-- **Singleton**: One instance of the service throughout the application's lifetime.
-- **Scoped**: One instance per scope, typically per web request.
-- **Transient**: A new instance every time the service is requested.
+---
 
 ## Contributing
 
-Feel free to fork, open issues, or submit pull requests! If you find bugs or have feature requests, don't hesitate to let us know.
+We welcome contributions! Feel free to fork the repository, open issues, or submit pull requests.
+
+---
 
 ## License
 
-MIT License
+This project is licensed under the MIT License. See the `LICENSE` file for details.
