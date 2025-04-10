@@ -1,4 +1,4 @@
-# auto_dial
+# auto_dial (Automatic Dependancy Injection Abstraction Layer)
 
 `auto_dial` is a library that makes setting up Dependency Injection (DI) in .NET applications super easy. Instead of writing a lot of repetitive code to register your services, `auto_dial` does it for you automatically. It scans your code, finds the services, and registers them with the DI container. This saves time and reduces mistakes.
 
