@@ -108,6 +108,11 @@ class Program
 
         // Automatically register services in the same assembly
         services.PrimeServicesForAutoRegistration()
+            .IfExceptionOccurs((exception) =>
+            {
+                // Handle the exception (log it, rethrow, etc.)
+                Console.WriteLine($"An error occurred during service registration: {exception.Message}");
+            })
             .FromAssemblyOf<MyService>() // Scan the assembly containing MyService
             .CompleteAutoRegistration(); // Automatically register services
 
