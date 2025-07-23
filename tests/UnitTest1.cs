@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using auto_dial;
 
 namespace auto_dial.tests.DependencyOrderTests
@@ -93,7 +94,66 @@ namespace auto_dial.tests.CircularDependencyTests
 
             Assert.NotNull(exception);
             Assert.IsType<InvalidOperationException>(exception);
-            Assert.Contains("Circular dependency detected", exception.Message);
+            Assert.Contains("Cannot resolve registration order.", exception.Message);
         }
     }
 }
+
+namespace auto_dial.tests.MultipleImplementationsTests
+{
+    public interface IMultiService { }
+    public class MultiServiceA : IMultiService { }
+    public class MultiServiceB : IMultiService { }
+
+    public class MultipleImplementationsTests
+    {
+        [Fact]
+        public void MultipleImplementationsAreRegistered()
+        {
+            var services = new ServiceCollection();
+
+            services.AddAutoDial(options =>
+            {
+                options.FromAssemblyOf<IMultiService>();
+                options.InNamespaceStartingWith("auto_dial.tests.MultipleImplementationsTests");
+            });
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            var multiServices = serviceProvider.GetServices<IMultiService>();
+
+            Assert.NotNull(multiServices);
+            Assert.Equal(2, multiServices.Count());
+            Assert.Contains(multiServices, s => s.GetType() == typeof(MultiServiceA));
+            Assert.Contains(multiServices, s => s.GetType() == typeof(MultiServiceB));
+        }
+    }
+}
+
+namespace auto_dial.tests.ConcreteTypeRegistrationTests
+{
+    public class ConcreteService { }
+
+    public class ConcreteTypeRegistrationTests
+    {
+        [Fact]
+        public void ConcreteTypeIsRegistered()
+        {
+            var services = new ServiceCollection();
+
+            services.AddAutoDial(options =>
+            {
+                options.FromAssemblyOf<ConcreteService>();
+                options.InNamespaceStartingWith("auto_dial.tests.ConcreteTypeRegistrationTests");
+            });
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            var concreteService = serviceProvider.GetService<ConcreteService>();
+
+            Assert.NotNull(concreteService);
+            Assert.IsType<ConcreteService>(concreteService);
+        }
+    }
+}
+

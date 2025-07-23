@@ -46,7 +46,7 @@ namespace auto_dial
                         var dependencyType = parameter.ParameterType;
 
                         // Find the implementation that provides this dependency.
-                        // We check both interface and implementation types as dependencies might be injected directly.
+                        // This needs to handle both concrete and open generic types.
                         var dependentImpl = _implementations.FirstOrDefault(x => x.InterfaceType == dependencyType || x.ImplementationType == dependencyType);
 
                         if (dependentImpl != null)

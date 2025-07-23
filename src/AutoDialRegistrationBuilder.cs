@@ -17,6 +17,8 @@ namespace auto_dial
         private HashSet<string> excludedInterfaces = new HashSet<string>();
         
         // Cache to store the types we've already reflected
+        private static readonly object _cacheLock = new object();
+
         private static readonly Dictionary<Tuple<Assembly, string>, List<Type>> ReflectedTypesCache = new Dictionary<Tuple<Assembly, string>, List<Type>>();
 
         public AutoDialRegistrationBuilder(
@@ -102,14 +104,17 @@ namespace auto_dial
         private List<Type> GetTypesToRegister()
         {
             var cacheKey = Tuple.Create(assembly, namespacePrefixes != null ? string.Join(",", namespacePrefixes) : "");
-            if (!ReflectedTypesCache.TryGetValue(cacheKey, out var types))
+            lock (_cacheLock)
             {
-                types = assembly.GetTypes()
-                    .Where(t => t.Namespace != null && (namespacePrefixes == null || namespacePrefixes.Any(prefix => t.Namespace.StartsWith(prefix.TrimEnd('.'), StringComparison.OrdinalIgnoreCase))))
-                    .ToList();
-                ReflectedTypesCache[cacheKey] = types;
+                if (!ReflectedTypesCache.TryGetValue(cacheKey, out var types))
+                {
+                    types = assembly.GetTypes()
+                        .Where(t => t.Namespace != null && (namespacePrefixes == null || namespacePrefixes.Any(prefix => t.Namespace.StartsWith(prefix.TrimEnd('.'), StringComparison.OrdinalIgnoreCase))))
+                        .ToList();
+                    ReflectedTypesCache[cacheKey] = types;
+                }
+                return types;
             }
-            return types;
         }
 
         private List<ServiceImplementation> FindImplementations(List<Type> types)
@@ -129,6 +134,12 @@ namespace auto_dial
                 if (interfaceType != null)
                 {
                     implementations.Add(new ServiceImplementation(type, interfaceType, GetServiceLifetime(type)));
+                }
+                else if (!type.IsAbstract && !type.IsInterface && !HasExcludeAttribute(type) &&
+                         (namespacePrefixes == null || namespacePrefixes.Any(prefix => type.Namespace != null && type.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))))
+                {
+                    // Handle concrete types without an interface
+                    implementations.Add(new ServiceImplementation(type, type, GetServiceLifetime(type)));
                 }
             }
             return implementations;
