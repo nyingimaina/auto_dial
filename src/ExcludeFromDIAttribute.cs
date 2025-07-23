@@ -1,7 +1,9 @@
+using System;
+
 namespace auto_dial
 {
-    public class ExcludeFromDIAttribute
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    public sealed class ExcludeFromDIAttribute : Attribute
     {
-        
     }
 }

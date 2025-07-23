@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../src/auto-dial.csproj" />
+    <ProjectReference Include="..\src\auto-dial.csproj" />
   </ItemGroup>
 
 </Project>
