@@ -107,14 +107,15 @@ class Program
         var services = new ServiceCollection();
 
         // Automatically register services in the same assembly
-        services.PrimeServicesForAutoRegistration()
-            .IfExceptionOccurs((exception) =>
+        services.AddAutoDial(options =>
+        {
+            options.IfExceptionOccurs((exception) =>
             {
                 // Handle the exception (log it, rethrow, etc.)
                 Console.WriteLine($"An error occurred during service registration: {exception.Message}");
-            })
-            .FromAssemblyOf<MyService>() // Scan the assembly containing MyService
-            .CompleteAutoRegistration(); // Automatically register services
+            });
+            options.FromAssemblyOf<MyService>(); // Scan the assembly containing MyService
+        });
 
         var serviceProvider = services.BuildServiceProvider();
 
@@ -129,9 +130,10 @@ class Program
 
 ## How It Works
 
-1. **`PrimeServicesForAutoRegistration()`**: Prepares the DI container for auto-registration.
-2. **`FromAssemblyOf<T>()`**: Tells `auto_dial` to scan the assembly containing the specified type (`MyService` in this case).
-3. **`CompleteAutoRegistration()`**: Automatically registers all services found in the assembly.
+1. **`AddAutoDial()`**: The primary extension method on `IServiceCollection` to initiate auto-registration.
+2. **`configure` action (optional)**: An `Action<AutoDialRegistrationBuilder>` that allows you to customize the registration process using the fluent API (e.g., `FromAssemblyOf`, `InNamespaceStartingWith`, `ExcludeInterface`, `IfExceptionOccurs`).
+3. **Default Behavior**: If no `configure` action is provided, `AddAutoDial()` will automatically scan the assembly where it is called and register all eligible services within all its namespaces.
+4. **`CompleteAutoRegistration()`**: This method is now called internally by `AddAutoDial()`, so you no longer need to call it explicitly.
 
 ---
 
@@ -141,23 +143,25 @@ class Program
 
 ### 1. Register Services from a Specific Assembly
 
-Use `FromAssemblyOf<T>()` to scan a specific assembly for services.
+Use `AddAutoDial()` with `FromAssemblyOf<T>()` to scan a specific assembly for services.
 
 ```csharp
-services.PrimeServicesForAutoRegistration()
-    .FromAssemblyOf<MyService>()
-    .CompleteAutoRegistration();
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyService>();
+});
 ```
 
 ### 2. Filter Services by Namespace
 
-If you only want to register services from a specific namespace, use `InNamespaceStartingWith()`:
+If you only want to register services from specific namespaces, use `InNamespaceStartingWith()`:
 
 ```csharp
-services.PrimeServicesForAutoRegistration()
-    .FromAssemblyOf<MyService>()
-    .InNamespaceStartingWith("MyApp.Services")
-    .CompleteAutoRegistration();
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyService>();
+    options.InNamespaceStartingWith("MyApp.Services", "MyApp.Common");
+});
 ```
 
 ### 3. Exclude Specific Interfaces
@@ -165,19 +169,21 @@ services.PrimeServicesForAutoRegistration()
 You can exclude certain interfaces from being registered:
 
 ```csharp
-services.PrimeServicesForAutoRegistration()
-    .FromAssemblyOf<MyService>()
-    .ExcludeInterface<IMyService>() // Exclude IMyService
-    .CompleteAutoRegistration();
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyService>();
+    options.ExcludeInterface<IMyService>(); // Exclude IMyService
+});
 ```
 
 Or exclude multiple interfaces:
 
 ```csharp
-services.PrimeServicesForAutoRegistration()
-    .FromAssemblyOf<MyService>()
-    .ExcludeInterfaces(typeof(IMyService), typeof(IOtherService))
-    .CompleteAutoRegistration();
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyService>();
+    options.ExcludeInterfaces(typeof(IMyService), typeof(IOtherService));
+});
 ```
 
 ---
@@ -251,9 +257,10 @@ class Program
         var services = new ServiceCollection();
 
         // Automatically register services
-        services.PrimeServicesForAutoRegistration()
-            .FromAssemblyOf<MyService>()
-            .CompleteAutoRegistration();
+        services.AddAutoDial(options =>
+        {
+            options.FromAssemblyOf<MyService>();
+        });
 
         var serviceProvider = services.BuildServiceProvider();
 

@@ -36,10 +36,11 @@ namespace auto_dial.tests.DependencyOrderTests
             var services = new ServiceCollection();
 
             // Register services using auto_dial
-            services.PrimeServicesForAutoRegistration()
-                .FromAssemblyOf<ServiceA>() // Scan the assembly containing our test services
-                .InNamespaceStartingWith("auto_dial.tests.DependencyOrderTests") // Filter to our test namespace
-                .CompleteAutoRegistration();
+            services.AddAutoDial(options =>
+            {
+                options.FromAssemblyOf<ServiceA>(); // Scan the assembly containing our test services
+                options.InNamespaceStartingWith("auto_dial.tests.DependencyOrderTests");
+            });
 
             var serviceProvider = services.BuildServiceProvider();
 
@@ -83,10 +84,11 @@ namespace auto_dial.tests.CircularDependencyTests
             // Expect an InvalidOperationException due to circular dependency
             var exception = Record.Exception(() =>
             {
-                services.PrimeServicesForAutoRegistration()
-                    .FromAssemblyOf<CircularServiceA>()
-                    .InNamespaceStartingWith("auto_dial.tests.CircularDependencyTests")
-                    .CompleteAutoRegistration();
+                services.AddAutoDial(options =>
+                {
+                    options.FromAssemblyOf<CircularServiceA>();
+                    options.InNamespaceStartingWith("auto_dial.tests.CircularDependencyTests");
+                });
             });
 
             Assert.NotNull(exception);

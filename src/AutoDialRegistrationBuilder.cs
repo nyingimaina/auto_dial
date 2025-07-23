@@ -10,7 +10,7 @@ namespace auto_dial
     {
         private readonly IServiceCollection services;
         private Assembly assembly;
-        private string namespacePrefix;
+        private string[]? namespacePrefixes;
 
         private Action<Exception> OnException { get; set; } = (_) => { };
 
@@ -24,7 +24,7 @@ namespace auto_dial
         {
             this.services = services;
             assembly = Assembly.GetCallingAssembly(); // Use the calling assembly, not the executing one
-            namespacePrefix = assembly.GetName().Name!; // Default to the namespace of the executing assembly, can be overridden
+            namespacePrefixes = null; // Default to no namespace filtering
         }
 
         /// <summary>
@@ -39,9 +39,9 @@ namespace auto_dial
         /// <summary>
         /// Allows custom namespace prefix for filtering types.
         /// </summary>
-        public AutoDialRegistrationBuilder InNamespaceStartingWith(string namespacePrefix)
+        public AutoDialRegistrationBuilder InNamespaceStartingWith(params string[] namespacePrefixes)
         {
-            this.namespacePrefix = namespacePrefix;
+            this.namespacePrefixes = namespacePrefixes;
             return this;
         }
 
@@ -101,12 +101,11 @@ namespace auto_dial
 
         private List<Type> GetTypesToRegister()
         {
-            var cacheKey = Tuple.Create(assembly, namespacePrefix);
+            var cacheKey = Tuple.Create(assembly, namespacePrefixes != null ? string.Join(",", namespacePrefixes) : "");
             if (!ReflectedTypesCache.TryGetValue(cacheKey, out var types))
             {
-                var trimmedNamespacePrefix = namespacePrefix.TrimEnd('.');
                 types = assembly.GetTypes()
-                    .Where(t => t.Namespace != null && t.Namespace.StartsWith(trimmedNamespacePrefix, StringComparison.OrdinalIgnoreCase))
+                    .Where(t => t.Namespace != null && (namespacePrefixes == null || namespacePrefixes.Any(prefix => t.Namespace.StartsWith(prefix.TrimEnd('.'), StringComparison.OrdinalIgnoreCase))))
                     .ToList();
                 ReflectedTypesCache[cacheKey] = types;
             }
@@ -116,14 +115,14 @@ namespace auto_dial
         private List<ServiceImplementation> FindImplementations(List<Type> types)
         {
             var alreadyRegisteredServices = services
-                .Where(s => s.ServiceType.Namespace != null && s.ServiceType.Namespace.StartsWith(namespacePrefix))
+                .Where(s => s.ServiceType.Namespace != null && (namespacePrefixes == null || namespacePrefixes.Any(prefix => s.ServiceType.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))))
                 .Select(s => s.ServiceType)
                 .ToHashSet();
 
             var implementations = new List<ServiceImplementation>();
 
             foreach (var type in types.Where(t => t.IsClass && !t.IsAbstract && !HasExcludeAttribute(t) &&
-                                                  t.Namespace != null && t.Namespace.StartsWith(namespacePrefix, StringComparison.OrdinalIgnoreCase)))
+                                                  t.Namespace != null && (namespacePrefixes == null || namespacePrefixes.Any(prefix => t.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))))
             {
                 var interfaceType = type.GetInterfaces().FirstOrDefault(IsInterfaceEligible);
 
@@ -137,7 +136,7 @@ namespace auto_dial
 
         private bool IsInterfaceEligible(Type candidateInterface)
         {
-            if (candidateInterface.Namespace == null || !candidateInterface.Namespace.StartsWith(namespacePrefix, StringComparison.OrdinalIgnoreCase))
+            if (candidateInterface.Namespace == null || (namespacePrefixes != null && !namespacePrefixes.Any(prefix => candidateInterface.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))))
                 return false;
 
             if (candidateInterface.FullName == null || excludedInterfaces.Contains(candidateInterface.FullName))
