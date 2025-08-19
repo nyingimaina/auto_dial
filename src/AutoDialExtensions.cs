@@ -13,11 +13,14 @@ namespace auto_dial
         /// <returns>An AutoDialRegistrationBuilder instance to configure auto-registration.</returns>
         public static IServiceCollection AddAutoDial(
             this IServiceCollection services,
-            Action<AutoDialRegistrationBuilder>? configure = null)
+            Action<AutoDialRegistrationBuilder>? configure = null,
+            Action? onCompleted = null)
         {
             var builder = new AutoDialRegistrationBuilder(services);
             configure?.Invoke(builder);
-            return builder.CompleteAutoRegistration();
+            var result = builder.CompleteAutoRegistration();
+            onCompleted?.Invoke();
+            return result;
         }
     }
 }
