@@ -427,7 +427,7 @@ public class NotAService // This class will be ignored by auto_dial
 
 #### 1. Full Magic: Convention-Based Registration (Least Boilerplate)
 
-This is the most hands-off approach. You define a convention (e.g., all classes ending in "Service") and `auto_dial` automatically registers them. This is ideal for projects with strict naming conventions.
+This is the most hands-off approach. You define a convention (e.g., all classes ending in "Service" or all classes that inherit from a specific type) and `auto_dial` automatically registers them. This is ideal for projects with strict conventions.
 
 -   **How to use:** Use `options.RegisterByConvention(predicate, defaultLifetime)`.
 -   **Pros:** Minimal boilerplate; you only configure the convention once.
