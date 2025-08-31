@@ -493,3 +493,92 @@ namespace auto_dial.tests.ConventionRegistrationTests
     }
 }
 
+namespace auto_dial.tests.TypeFilterTests
+{
+    // Test types for TypeFilters
+    public class BaseClass { }
+    public class DerivedClass : BaseClass { }
+    public interface ITestInterface { }
+    public class ImplementedClass : ITestInterface { }
+    public interface IGenericInterface<T> { }
+    public class GenericImplementedClass : IGenericInterface<string> { }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public class TestAttribute : Attribute { }
+    [Test]
+    public class AttributedClass { }
+
+    public class TypeFilterTests
+    {
+        [Fact]
+        public void InheritsOrImplements_ReturnsTrueForInheritance()
+        {
+            var predicate = TypeFilters.InheritsOrImplements<BaseClass>();
+            Assert.True(predicate(typeof(DerivedClass)));
+        }
+
+        [Fact]
+        public void InheritsOrImplements_ReturnsTrueForImplementation()
+        {
+            var predicate = TypeFilters.InheritsOrImplements<ITestInterface>();
+            Assert.True(predicate(typeof(ImplementedClass)));
+        }
+
+        [Fact]
+        public void InheritsOrImplements_ReturnsTrueForGenericInterfaceImplementation()
+        {
+            var predicate = TypeFilters.InheritsOrImplements(typeof(IGenericInterface<>));
+            Assert.True(predicate(typeof(GenericImplementedClass)));
+        }
+
+        [Fact]
+        public void Implements_ReturnsTrueForInterface()
+        {
+            var predicate = TypeFilters.Implements<ITestInterface>();
+            Assert.True(predicate(typeof(ImplementedClass)));
+        }
+
+        [Fact]
+        public void Implements_ReturnsTrueForGenericInterface()
+        {
+            var predicate = TypeFilters.Implements(typeof(IGenericInterface<>));
+            Assert.True(predicate(typeof(GenericImplementedClass)));
+        }
+
+        [Fact]
+        public void HasAttribute_ReturnsTrueForAttributedClass()
+        {
+            var predicate = TypeFilters.HasAttribute<TestAttribute>();
+            Assert.True(predicate(typeof(AttributedClass)));
+        }
+
+        [Fact]
+        public void EndsWith_ReturnsTrueForMatchingSuffix()
+        {
+            var predicate = TypeFilters.EndsWith("Class");
+            Assert.True(predicate(typeof(DerivedClass)));
+        }
+
+        [Fact]
+        public void StartsWith_ReturnsTrueForMatchingPrefix()
+        {
+            var predicate = TypeFilters.StartsWith("Derived");
+            Assert.True(predicate(typeof(DerivedClass)));
+        }
+
+        [Fact]
+        public void IsInNamespace_ReturnsTrueForMatchingNamespace()
+        {
+            var predicate = TypeFilters.IsInNamespace("auto_dial.tests.TypeFilterTests");
+            Assert.True(predicate(typeof(TypeFilterTests)));
+        }
+
+        [Fact]
+        public void IsInNamespace_ReturnsFalseForNonMatchingNamespace()
+        {
+            var predicate = TypeFilters.IsInNamespace("NonExistentNamespace");
+            Assert.False(predicate(typeof(TypeFilterTests)));
+        }
+    }
+}
+
