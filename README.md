@@ -414,6 +414,27 @@ services.AddAutoDial(options =>
 
 When a service has multiple constructors, the `DependencyResolver` needs to know which one to analyze to find its dependencies. `auto_dial` uses a simple and common convention: **it selects the constructor with the most parameters.**
 
+### Hybrid Registration: Mixing Manual and Automatic
+
+It is common to mix manual service registration with `auto_dial`. The dependency validation in `auto_dial` is designed to support this. It is aware of services that have already been registered in the `IServiceCollection` before it runs.
+
+**IMPORTANT**: For this to work, you must perform your manual registrations **before** you call the `AddAutoDial()` method. The validation check can only see what has *already* been added to the service collection.
+
+```csharp
+var services = new ServiceCollection();
+
+// 1. Manually register a third-party service or a complex factory
+services.AddSingleton<IThirdPartyService>(new ThirdPartyService());
+
+// 2. Use auto_dial for your application services
+// auto_dial will correctly see that IThirdPartyService is available for any
+// of your auto-registered services that depend on it.
+services.AddAutoDial(options => 
+{
+    options.FromAssemblyOf<MyApplicationService>();
+});
+```
+
 ---
 
 ## Observing `auto_dial`'s Behavior
@@ -431,8 +452,10 @@ By configuring the log level in `Program.cs`, you can control how much detail yo
 `auto_dial` is designed to fail fast and provide clear error messages when it detects a problem with your dependency setup. Here are some common errors and how to resolve them:
 
 -   **Unregistered Dependency**: This is the most common error. It occurs when a service depends on another service that `auto_dial` cannot find.
-    -   **Error Message**: `auto_dial Error: Cannot resolve dependency 'IServiceB' for the constructor of class 'ServiceA'. Please ensure that the implementation for this service is decorated with the [ServiceLifetime] attribute...`
-    -   **Solution**: Find the class that implements the missing dependency (`IServiceB` in this case) and ensure it has the `[ServiceLifetime]` attribute and is located in a namespace that is being scanned.
+    -   **Error Message**: `auto_dial Error: Cannot resolve dependency 'IServiceB' for the constructor of class 'ServiceA'. Please ensure that the implementation for this service is decorated with the [ServiceLifetime] attribute and is included in the assembly/namespace scan, or that it has been registered manually before calling AddAutoDial().`
+    -   **Solution**: This means `ServiceA` depends on `IServiceB`, but `auto_dial` couldn't find a registration for `IServiceB`. To fix this, you must either:
+        1.  Find the class that implements `IServiceB` and add the `[ServiceLifetime]` attribute to it, OR
+        2.  Ensure that you are manually registering `IServiceB` in the `IServiceCollection` **before** you call `AddAutoDial()`.
 
 -   **Service Not Registered**: This can happen for a few reasons.
     1.  The service implementation class is missing the `[ServiceLifetime]` attribute.
