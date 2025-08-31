@@ -119,27 +119,31 @@ namespace auto_dial
 
         private List<ServiceImplementation> FindImplementations(List<Type> types)
         {
-            var alreadyRegisteredServices = services
-                .Where(s => s.ServiceType.Namespace != null && (namespacePrefixes == null || namespacePrefixes.Any(prefix => s.ServiceType.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))))
-                .Select(s => s.ServiceType)
-                .ToHashSet();
-
             var implementations = new List<ServiceImplementation>();
 
-            foreach (var type in types.Where(t => t.IsClass && !t.IsAbstract && !HasExcludeAttribute(t) &&
-                                                  t.Namespace != null && (namespacePrefixes == null || namespacePrefixes.Any(prefix => t.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))))
+            // Filter for concrete classes that are not excluded and have the ServiceLifetimeAttribute.
+            var candidateTypes = types.Where(t =>
+                t.IsClass &&
+                !t.IsAbstract &&
+                !HasExcludeAttribute(t) &&
+                HasServiceLifetimeAttribute(t) && // This is the new opt-in check
+                (namespacePrefixes == null || namespacePrefixes.Any(prefix => t.Namespace != null && t.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            );
+
+            foreach (var type in candidateTypes)
             {
+                var lifetime = GetServiceLifetime(type); // We know the attribute exists.
                 var interfaceType = type.GetInterfaces().FirstOrDefault(IsInterfaceEligible);
 
                 if (interfaceType != null)
                 {
-                    implementations.Add(new ServiceImplementation(type, interfaceType, GetServiceLifetime(type)));
+                    // Register the implementation against its eligible interface.
+                    implementations.Add(new ServiceImplementation(type, interfaceType, lifetime));
                 }
-                else if (!type.IsAbstract && !type.IsInterface && !HasExcludeAttribute(type) &&
-                         (namespacePrefixes == null || namespacePrefixes.Any(prefix => type.Namespace != null && type.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))))
+                else
                 {
-                    // Handle concrete types without an interface
-                    implementations.Add(new ServiceImplementation(type, type, GetServiceLifetime(type)));
+                    // Handle concrete types without a suitable interface. Register the type itself.
+                    implementations.Add(new ServiceImplementation(type, type, lifetime));
                 }
             }
             return implementations;
@@ -178,11 +182,17 @@ namespace auto_dial
 
         private ServiceLifetime GetServiceLifetime(Type implementationType)
         {
-            var lifetimeAttribute = implementationType
+            var lifetimeAttribute = (ServiceLifetimeAttribute?)implementationType
                 .GetCustomAttributes(typeof(ServiceLifetimeAttribute), false)
-                .FirstOrDefault() as ServiceLifetimeAttribute;
+                .FirstOrDefault();
 
-            return lifetimeAttribute?.Lifetime ?? ServiceLifetime.Scoped;
+            // This method should only be called for types that have the attribute.
+            return lifetimeAttribute?.Lifetime ?? throw new InvalidOperationException($"Could not find ServiceLifetimeAttribute on type {implementationType.Name}.");
+        }
+
+        private bool HasServiceLifetimeAttribute(Type implementationType)
+        {
+            return implementationType.GetCustomAttributes(typeof(ServiceLifetimeAttribute), false).Any();
         }
 
         private bool HasExcludeAttribute(Type implementationType)
