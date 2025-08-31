@@ -100,7 +100,9 @@ namespace auto_dial.tests.CircularDependencyTests
 
             Assert.NotNull(exception);
             Assert.IsType<InvalidOperationException>(exception);
-            Assert.Contains("Cannot resolve registration order.", exception.Message);
+            Assert.Contains("auto_dial Error: A circular dependency was detected.", exception.Message);
+            Assert.Contains("CircularServiceA ->", exception.Message);
+            Assert.Contains("-> CircularServiceA", exception.Message);
         }
     }
 }
@@ -162,6 +164,88 @@ namespace auto_dial.tests.ConcreteTypeRegistrationTests
 
             Assert.NotNull(concreteService);
             Assert.IsType<ConcreteService>(concreteService);
+        }
+    }
+}
+
+namespace auto_dial.tests.ErrorHandlingTests
+{
+    // --- Unregistered Dependency Test ---
+    public interface IUnregisteredDep { }
+    public class UnregisteredDep : IUnregisteredDep { } // No [ServiceLifetime] attribute
+
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class ServiceWithUnregisteredDep
+    {
+        public ServiceWithUnregisteredDep(IUnregisteredDep dep) { }
+    }
+
+    // --- Detailed Circular Dependency Test ---
+    public interface ICircularDepA { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class CircularDepA : ICircularDepA
+    {
+        public CircularDepA(ICircularDepB b) { }
+    }
+
+    public interface ICircularDepB { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class CircularDepB : ICircularDepB
+    {
+        public CircularDepB(ICircularDepC c) { }
+    }
+
+    public interface ICircularDepC { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class CircularDepC : ICircularDepC
+    {
+        public CircularDepC(ICircularDepA a) { }
+    }
+
+
+    public class ErrorHandlingTests
+    {
+        [Fact]
+        public void UnregisteredDependencyThrowsDetailedException()
+        {
+            var services = new ServiceCollection();
+
+            var exception = Record.Exception(() =>
+            {
+                services.AddAutoDial(options =>
+                {
+                    options.FromAssemblyOf<ErrorHandlingTests>();
+                    options.InNamespaceStartingWith("auto_dial.tests.ErrorHandlingTests");
+                });
+            });
+
+            Assert.NotNull(exception);
+            Assert.IsType<InvalidOperationException>(exception);
+            Assert.Contains("auto_dial Error: Cannot resolve dependency 'IUnregisteredDep' for the constructor of class 'ServiceWithUnregisteredDep'", exception.Message);
+        }
+
+        [Fact]
+        public void CircularDependencyThrowsDetailedException()
+        {
+            var services = new ServiceCollection();
+
+            var exception = Record.Exception(() =>
+            {
+                services.AddAutoDial(options =>
+                {
+                    options.FromAssemblyOf<ErrorHandlingTests>();
+                    options.InNamespaceStartingWith("auto_dial.tests.ErrorHandlingTests");
+                });
+            });
+
+            Assert.NotNull(exception);
+            Assert.IsType<InvalidOperationException>(exception);
+            // The exact order can vary, so we check for the components of the chain.
+            Assert.Contains("auto_dial Error: A circular dependency was detected.", exception.Message);
+            Assert.Contains("CircularDepA ->", exception.Message);
+            Assert.Contains("CircularDepB ->", exception.Message);
+            Assert.Contains("CircularDepC ->", exception.Message);
+            Assert.Contains("-> CircularDepA", exception.Message);
         }
     }
 }

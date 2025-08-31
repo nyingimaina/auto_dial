@@ -23,46 +23,52 @@ namespace auto_dial
             _dependencyGraph = new Dictionary<Type, List<Type>>();
             _inDegree = new Dictionary<Type, int>();
 
-            // Initialize in-degrees for all services that are candidates for registration.
-            // Initially, each service has an in-degree of 0.
+            var implementationTypes = new HashSet<Type>(implementations.Select(i => i.ImplementationType));
+            var interfaceToImplementationMap = implementations.ToDictionary(i => i.InterfaceType, i => i.ImplementationType);
+
             foreach (var impl in _implementations)
             {
                 _inDegree[impl.ImplementationType] = 0;
             }
 
-            // Build the dependency graph and calculate in-degrees.
-            // An edge from A to B means B depends on A (A must be registered before B).
-            // We iterate through each service and its constructor parameters to find its dependencies.
             foreach (var impl in _implementations)
             {
                 var constructor = impl.ImplementationType.GetConstructors()
                                     .OrderByDescending(c => c.GetParameters().Length)
                                     .FirstOrDefault();
 
-                if (constructor != null)
+                if (constructor == null) continue;
+
+                foreach (var parameter in constructor.GetParameters())
                 {
-                    foreach (var parameter in constructor.GetParameters())
+                    var dependencyType = parameter.ParameterType;
+                    Type? dependentImplType = null;
+
+                    // Check if the dependency is registered as an interface or a concrete type.
+                    if (interfaceToImplementationMap.ContainsKey(dependencyType))
                     {
-                        var dependencyType = parameter.ParameterType;
+                        dependentImplType = interfaceToImplementationMap[dependencyType];
+                    }
+                    else if (implementationTypes.Contains(dependencyType))
+                    {
+                        dependentImplType = dependencyType;
+                    }
 
-                        // Find the implementation that provides this dependency.
-                        // This needs to handle both concrete and open generic types.
-                        var dependentImpl = _implementations.FirstOrDefault(x => x.InterfaceType == dependencyType || x.ImplementationType == dependencyType);
-
-                        if (dependentImpl != null)
+                    if (dependentImplType != null)
+                    {
+                        if (!_dependencyGraph.ContainsKey(dependentImplType))
                         {
-                            // Add an edge from the dependency to the current service.
-                            // This means 'impl.ImplementationType' depends on 'dependentImpl.ImplementationType'.
-                            // So, 'dependentImpl.ImplementationType' is a prerequisite for 'impl.ImplementationType'.
-                            if (!_dependencyGraph.ContainsKey(dependentImpl.ImplementationType))
-                            {
-                                _dependencyGraph[dependentImpl.ImplementationType] = new List<Type>();
-                            }
-                            _dependencyGraph[dependentImpl.ImplementationType].Add(impl.ImplementationType);
-
-                            // Increment the in-degree of the current service, as it has one more dependency.
-                            _inDegree[impl.ImplementationType]++;
+                            _dependencyGraph[dependentImplType] = new List<Type>();
                         }
+                        _dependencyGraph[dependentImplType].Add(impl.ImplementationType);
+                        _inDegree[impl.ImplementationType]++;
+                    }
+                    else
+                    {
+                        // This is where the unregistered dependency is detected.
+                        throw new InvalidOperationException(
+                            $"auto_dial Error: Cannot resolve dependency '{(dependencyType.IsInterface ? dependencyType.Name : dependencyType.FullName)}' for the constructor of class '{impl.ImplementationType.Name}'. " +
+                            "Please ensure that the implementation for this service is decorated with the [ServiceLifetime] attribute and is included in the assembly/namespace scan.");
                     }
                 }
             }
@@ -117,11 +123,65 @@ namespace auto_dial
             // it indicates that a cycle exists in the dependency graph.
             if (sortedList.Count != _implementations.Count)
             {
-                var remainingNodes = _implementations.Where(impl => !sortedList.Any(s => s.ImplementationType == impl.ImplementationType)).Select(impl => impl.ImplementationType.Name).ToList();
-                throw new InvalidOperationException($"Circular dependency detected among services: {string.Join(", ", remainingNodes)}. Cannot resolve registration order.");
+                var cycle = FindCycle();
+                throw new InvalidOperationException($"auto_dial Error: A circular dependency was detected. The registration order cannot be determined. Dependency chain: {string.Join(" -> ", cycle)}");
             }
 
             return sortedList;
+        }
+
+        private List<string> FindCycle()
+        {
+            var remainingNodes = _inDegree.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToHashSet();
+            if (!remainingNodes.Any()) return new List<string>();
+
+            var path = new List<Type>();
+            var visited = new HashSet<Type>();
+            var recursionStack = new HashSet<Type>();
+
+            Func<Type, bool> visit = null;
+            visit = (node) =>
+            {
+                visited.Add(node);
+                recursionStack.Add(node);
+                path.Add(node);
+
+                if (_dependencyGraph.ContainsKey(node))
+                {
+                    foreach (var neighbor in _dependencyGraph[node])
+                    {
+                        if (recursionStack.Contains(neighbor))
+                        {
+                            path.Add(neighbor);
+                            return true; // Cycle detected
+                        }
+                        if (!visited.Contains(neighbor))
+                        {
+                            if (visit(neighbor)) return true;
+                        }
+                    }
+                }
+
+                recursionStack.Remove(node);
+                path.RemoveAt(path.Count - 1);
+                return false;
+            };
+
+            foreach (var node in remainingNodes)
+            {
+                if (!visited.Contains(node))
+                {
+                    if (visit(node))
+                    {
+                        // Format the cycle path
+                        var cycleStartIndex = path.IndexOf(path.Last());
+                        return path.Skip(cycleStartIndex).Select(t => t.Name).ToList();
+                    }
+                }
+            }
+
+            // Fallback for complex graphs where a simple path isn't found, though the topological sort already failed.
+            return remainingNodes.Select(t => t.Name).ToList();
         }
     }
 }
