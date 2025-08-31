@@ -4,6 +4,7 @@
 
 ## Why Use auto_dial?
 
+- **Safe & Explicit**: `auto_dial` uses an opt-in model. Only services you explicitly mark will be registered, preventing accidental registration of non-service classes.
 - **Less Repetitive Code**: You don't have to manually register every service in your application.
 - **Flexible**: You can control which services are registered by filtering based on namespaces or assemblies.
 - **Customizable**: You can exclude specific services from being registered if needed.
@@ -52,27 +53,33 @@ This will download and add the library to your project.
 
 ### Step 2: Set Up Your Services
 
+To make a class eligible for auto-registration, decorate it with the `[ServiceLifetime]` attribute. This tells `auto_dial` that the class is a service and specifies its lifetime.
+
 Let’s say you have a service like this:
 
 ```csharp
+using Microsoft.Extensions.DependencyInjection;
+using auto_dial; // Add this using directive
+
 public interface IMyService
 {
     void DoWork();
 }
 
+[ServiceLifetime(ServiceLifetime.Scoped)] // Opt-in for registration
 public class MyService : IMyService
 {
     public void DoWork()
     {
         Console.WriteLine("MyService is working!");
     }
-    public MyService() { } // Parameterless constructor for concrete registration example
 }
 ```
 
-And you want to use this service in another class:
+And you want to use this service in another class (which also needs to be registered):
 
 ```csharp
+[ServiceLifetime(ServiceLifetime.Transient)] // This class also needs to be registered to be resolved
 public class ConsumerClass
 {
     private readonly IMyService _myService;
@@ -89,13 +96,11 @@ public class ConsumerClass
 }
 ```
 
-Normally, you would have to manually register `IMyService` and `MyService` in the DI container. But with `auto_dial`, this is done automatically!
-
 ---
 
 ### Step 3: Use auto_dial to Register Services
 
-Here’s how you can use `auto_dial` to automatically register your services:
+Here’s how you can use `auto_dial` to automatically register your decorated services:
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
@@ -134,14 +139,14 @@ class Program
 `auto_dial` simplifies DI setup by automating service registration. Here's a deeper look into its mechanisms:
 
 1.  **`AddAutoDial()`**: This is the primary extension method on `IServiceCollection` to initiate auto-registration.
-2.  **`configure` action (optional)**: An `Action<AutoDialRegistrationBuilder>` that allows you to customize the registration process using the fluent API (e.g., `FromAssemblyOf`, `InNamespaceStartingWith`, `ExcludeInterface`, `IfExceptionOccurs`).
-3.  **Default Behavior**: If no `configure` action is provided, `AddAutoDial()` will automatically scan the assembly where it is called and register all eligible services within all its namespaces.
-4.  **Service Discovery**: `auto_dial` uses reflection to scan the specified assembly (or the calling assembly by default) for concrete classes that are not abstract and do not have the `[ExcludeFromDI]` attribute.
-5.  **Interface Matching**: For each discovered class, it attempts to find an interface that the class implements and that is eligible for registration (i.e., within the specified namespaces and not excluded).
-6.  **Concrete Type Registration**: If a class does not implement an eligible interface but meets the other criteria (not abstract, not excluded, within specified namespaces), it will be registered as a concrete type (e.g., `services.AddScoped<MyConcreteClass>()`).
+2.  **`configure` action (optional)**: An `Action<AutoDialRegistrationBuilder>` that allows you to customize the registration process using the fluent API (e.g., `FromAssemblyOf`, `InNamespaceStartingWith`, `ExcludeInterface`).
+3.  **Service Discovery (Opt-In Model)**: `auto_dial` uses reflection to scan the specified assembly for classes decorated with the `[ServiceLifetime]` attribute. This attribute serves as the explicit opt-in signal for registration.
+4.  **Default Behavior**: If no `configure` action is provided, `auto_dial` will scan the assembly where it is called. **Only classes with the `[ServiceLifetime]` attribute will be registered.** There is no default registration for undecorated classes.
+5.  **Interface Matching**: For each registered class, `auto_dial` attempts to find a corresponding interface to register it against. The interface must be in an eligible namespace and not be explicitly excluded.
+6.  **Concrete Type Registration**: If a class is decorated with `[ServiceLifetime]` but does not have a suitable interface, it will be registered as a concrete type (e.g., `services.AddScoped<MyConcreteClass>()`).
 7.  **Dependency Resolution (Topological Sort)**: Before registering services, `auto_dial` builds a dependency graph of all discovered services. It then performs a [topological sort (Kahn's algorithm)](https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm) to determine the correct order of registration, ensuring that dependencies are registered before the services that consume them.
-8.  **Circular Dependency Detection**: If the topological sort detects a circular dependency (where a group of services directly or indirectly depend on each other in a loop), `auto_dial` will throw an `InvalidOperationException`. This prevents runtime errors and forces you to address the architectural issue.
-9.  **`CompleteAutoRegistration()`**: This method is now called internally by `AddAutoDial()`, so you no longer need to call it explicitly.
+8.  **Circular Dependency Detection**: If the topological sort detects a circular dependency, `auto_dial` will throw an `InvalidOperationException`.
+9.  **`CompleteAutoRegistration()`**: This method is called internally by `AddAutoDial()`, so you no longer need to call it explicitly.
 
 ---
 
@@ -208,7 +213,7 @@ public class ExcludedService : IMyService
 
 ### 4. Registering Multiple Implementations of an Interface
 
-`auto_dial` supports registering multiple concrete implementations for the same interface. The underlying `Microsoft.Extensions.DependencyInjection` container will then allow you to resolve all of them as an `IEnumerable<TService>`.
+`auto_dial` supports registering multiple concrete implementations for the same interface. The underlying `Microsoft.Extensions.DependencyInjection` container will then allow you to resolve all of them as an `IEnumerable<TService>`. Just decorate each implementation with its own `[ServiceLifetime]` attribute.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
@@ -222,11 +227,13 @@ public interface INotificationService
     string SendNotification();
 }
 
+[ServiceLifetime(ServiceLifetime.Transient)]
 public class EmailNotificationService : INotificationService
 {
     public string SendNotification() => "Email sent!";
 }
 
+[ServiceLifetime(ServiceLifetime.Transient)]
 public class SmsNotificationService : INotificationService
 {
     public string SendNotification() => "SMS sent!";
@@ -265,13 +272,14 @@ class Program
 
 ### 5. Registering Concrete Types (Without an Interface)
 
-Sometimes you might have a class that doesn't implement an interface but still needs to be registered in the DI container. `auto_dial` can register these directly.
+Sometimes you might have a class that doesn't implement an interface but still needs to be registered in the DI container. `auto_dial` can register these directly as long as they are decorated with `[ServiceLifetime]`.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using auto_dial;
 using System;
 
+[ServiceLifetime(ServiceLifetime.Singleton)]
 public class UtilityService
 {
     public string GetCurrentTime() => DateTime.Now.ToShortTimeString();
@@ -303,19 +311,19 @@ class Program
 
 ## Supported Service Lifetimes
 
-When registering services, you can specify how they should be instantiated:
+`auto_dial` has an **opt-in** registration model. To register a service, you must decorate the implementation class with the `[ServiceLifetime]` attribute. This attribute tells `auto_dial` to register the service and specifies its lifetime.
 
 -   **Singleton**: One instance for the entire application.
--   **Scoped**: One instance per request (useful for web apps).
+-   **Scoped**: One instance per request (e.g., per HTTP request in a web app).
 -   **Transient**: A new instance every time the service is requested.
 
-To specify a lifetime, use the `[ServiceLifetime]` attribute on your class:
+If a class is not decorated with `[ServiceLifetime]`, it will be ignored.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using auto_dial; // Ensure this using directive is present
 
-[ServiceLifetime(ServiceLifetime.Singleton)]
+[ServiceLifetime(ServiceLifetime.Singleton)] // This service will be registered as a Singleton
 public class MySingletonService : IMyService
 {
     public void DoWork()
@@ -323,13 +331,21 @@ public class MySingletonService : IMyService
         Console.WriteLine("Singleton service is working!");
     }
 }
+
+public class NotAService // This class will be ignored by auto_dial
+{
+    // ...
+}
 ```
 
 ---
 
 ## Troubleshooting
 
--   **Service Not Registered**: Make sure the service is in the correct namespace or assembly being scanned. Check if it has the `[ExcludeFromDI]` attribute.
+-   **Service Not Registered**: 
+    1.  Ensure the service implementation class is decorated with the `[ServiceLifetime]` attribute. This is the most common reason for a service not being registered.
+    2.  Make sure the service is in the correct namespace or assembly being scanned.
+    3.  Check that it does not have the `[ExcludeFromDI]` attribute.
 -   **Circular Dependency Detected**: If you encounter an `InvalidOperationException` with a "Circular dependency detected" message, it means your services have a dependency loop. You'll need to refactor your service dependencies to break the cycle.
 
 ---

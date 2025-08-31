@@ -9,21 +9,25 @@ namespace auto_dial.tests.DependencyOrderTests
 {
     // Define test interfaces and implementations
     public interface IServiceA { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class ServiceA : IServiceA { }
 
     public interface IServiceB { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class ServiceB : IServiceB
     {
         public ServiceB(IServiceA serviceA) { }
     }
 
     public interface IServiceC { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class ServiceC : IServiceC
     {
         public ServiceC(IServiceB serviceB) { }
     }
 
     public interface IServiceD { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class ServiceD : IServiceD
     {
         public ServiceD(IServiceA serviceA, IServiceC serviceC) { }
@@ -64,12 +68,14 @@ namespace auto_dial.tests.CircularDependencyTests
 {
     // Test for circular dependency detection
     public interface ICircularServiceA { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class CircularServiceA : ICircularServiceA
     {
         public CircularServiceA(ICircularServiceB serviceB) { }
     }
 
     public interface ICircularServiceB { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class CircularServiceB : ICircularServiceB
     {
         public CircularServiceB(ICircularServiceA serviceA) { }
@@ -102,7 +108,9 @@ namespace auto_dial.tests.CircularDependencyTests
 namespace auto_dial.tests.MultipleImplementationsTests
 {
     public interface IMultiService { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class MultiServiceA : IMultiService { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class MultiServiceB : IMultiService { }
 
     public class MultipleImplementationsTests
@@ -132,6 +140,7 @@ namespace auto_dial.tests.MultipleImplementationsTests
 
 namespace auto_dial.tests.ConcreteTypeRegistrationTests
 {
+    [ServiceLifetime(ServiceLifetime.Scoped)]
     public class ConcreteService { }
 
     public class ConcreteTypeRegistrationTests
