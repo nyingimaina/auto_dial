@@ -2,6 +2,31 @@
 
 `auto_dial` is a library that makes setting up Dependency Injection (DI) in .NET applications super easy. Instead of writing a lot of repetitive code to register your services, `auto_dial` does it for you automatically. It scans your code, finds the services, and registers them with the DI container. This saves time and reduces mistakes.
 
+## Table of Contents
+
+- [Why Use auto_dial?](#why-use-auto_dial)
+- [What is Dependency Injection (DI)?](#what-is-dependency-injection-di)
+- [Getting Started](#getting-started)
+  - [Step 1: Install the Library](#step-1-install-the-library)
+  - [Step 2: Set Up Your Services](#step-2-set-up-your-services)
+  - [Step 3: Use auto_dial to Register Services](#step-3-use-auto_dial-to-register-services)
+- [How It Works](#how-it-works)
+- [Configuration Options](#configuration-options)
+  - [1. Register Services from a Specific Assembly](#1-register-services-from-a-specific-assembly)
+  - [2. Filter Services by Namespace](#2-filter-services-by-namespace)
+  - [3. Exclude Specific Interfaces or Implementations](#3-exclude-specific-interfaces-or-implementations)
+  - [4. Registering Multiple Implementations of an Interface](#4-registering-multiple-implementations-of-an-interface)
+  - [5. Registering Concrete Types (Without an Interface)](#5-registering-concrete-types-without-an-interface)
+- [Supported Service Lifetimes](#supported-service-lifetimes)
+- [Advanced Scenarios & Behavior](#advanced-scenarios--behavior)
+  - [Interface vs. Concrete Type Registration](#interface-vs-concrete-type-registration)
+  - [Handling Multi-Interface Services](#handling-multi-interface-services)
+  - [Constructor Selection for Dependency Resolution](#constructor-selection-for-dependency-resolution)
+- [Observing `auto_dial`'s Behavior](#observing-auto_dials-behavior)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Why Use auto_dial?
 
 - **Safe & Explicit**: `auto_dial` uses an opt-in model. Only services you explicitly mark will be registered, preventing accidental registration of non-service classes.
