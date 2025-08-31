@@ -195,7 +195,7 @@ namespace auto_dial
             var visited = new HashSet<Type>();
             var recursionStack = new HashSet<Type>();
 
-            Func<Type, bool> visit = null;
+            Func<Type, bool> visit = null!;
             visit = (node) =>
             {
                 visited.Add(node);
@@ -206,6 +206,11 @@ namespace auto_dial
                 {
                     foreach (var neighbor in _dependencyGraph[node])
                     {
+                        if (neighbor is null)
+                        {
+                            continue;
+                        }
+                        
                         if (recursionStack.Contains(neighbor))
                         {
                             path.Add(neighbor);
