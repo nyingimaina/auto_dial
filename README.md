@@ -15,13 +15,17 @@
   - [1. Register Services from a Specific Assembly](#1-register-services-from-a-specific-assembly)
   - [2. Filter Services by Namespace](#2-filter-services-by-namespace)
   - [3. Exclude Specific Interfaces or Implementations](#3-exclude-specific-interfaces-or-implementations)
-  - [4. Registering Multiple Implementations of an Interface](#4-registering-multiple-implementations-of-an-interface)
-  - [5. Registering Concrete Types (Without an Interface)](#5-registering-concrete-types-without-an-interface)
+  - [4. Ignore Dependencies in Validation (Extensible Exemption List)](#4-ignore-dependencies-in-validation-extensible-exemption-list)
+  - [5. Convention-Based Registration](#5-convention-based-registration)
+  - [6. Registering Multiple Implementations of an Interface](#6-registering-multiple-implementations-of-an-interface)
+  - [7. Registering Concrete Types (Without an Interface)](#7-registering-concrete-types-without-an-interface)
 - [Supported Service Lifetimes](#supported-service-lifetimes)
 - [Advanced Scenarios & Behavior](#advanced-scenarios--behavior)
-  - [Interface vs. Concrete Type Registration](#interface-vs-concrete-type-registration)
+  - [Levels of Granularity: Balancing Magic and Control](#levels-of-granularity-balancing-magic-and-control)
+  - [Interface vs. Concrete Type Registration](#interface-vs.-concrete-type-registration)
   - [Handling Multi-Interface Services](#handling-multi-interface-services)
   - [Constructor Selection for Dependency Resolution](#constructor-selection-for-dependency-resolution)
+  - [Hybrid Registration: Mixing Manual and Automatic](#hybrid-registration-mixing-manual-and-automatic)
 - [Observing `auto_dial`'s Behavior](#observing-auto_dials-behavior)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -170,7 +174,7 @@ class Program
 
 ## How It Works
 
-`auto_dial` simplifies DI setup by automating service registration. Here's a deeper look into its mechanisms:
+`auto_dial` simplifies DI setup by automating service registration. Here’s a deeper look into its mechanisms:
 
 1.  **`AddAutoDial()`**: This is the primary extension method on `IServiceCollection` to initiate auto-registration.
 2.  **`configure` action (optional)**: An `Action<AutoDialRegistrationBuilder>` that allows you to customize the registration process using the fluent API (e.g., `FromAssemblyOf`, `InNamespaceStartingWith`, `ExcludeInterface`).
@@ -347,7 +351,7 @@ class Program
 
 ### 7. Registering Concrete Types (Without an Interface)
 
-Sometimes you might have a class that doesn't implement an interface but still needs to be registered in the DI container. `auto_dial` can register these directly as long as they are decorated with `[ServiceLifetime]`.
+Sometimes you might have a class that doesn't implement an interface but still needs to be registered in the DI container. `auto_dial` can register these directly as long as they are decorated with `[ServiceLifetime]` or match a convention.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
@@ -386,44 +390,13 @@ class Program
 
 ## Supported Service Lifetimes
 
-`auto_dial` has an **opt-in** registration model. To register a service, you must decorate the implementation class with the `[ServiceLifetime]` attribute. This attribute tells `auto_dial` to register the service and specifies its lifetime.
+`auto_dial` has an **opt-in** registration model. To register a service, you must decorate the implementation class with the `[ServiceLifetime]` attribute or match a defined convention. This attribute tells `auto_dial` to register the service and specifies its lifetime.
 
 -   **Singleton**: One instance for the entire application.
 -   **Scoped**: One instance per request (e.g., per HTTP request in a web app).
 -   **Transient**: A new instance every time the service is requested.
 
-If a class is not decorated with `[ServiceLifetime]`, it will be ignored.
-
-```csharp
-using Microsoft.Extensions.DependencyInjection;
-using auto_dial; // Ensure this using directive is present
-
-[ServiceLifetime(ServiceLifetime.Singleton)] // This service will be registered as a Singleton
-public class MySingletonService : IMyService
-{
-    public void DoWork()
-    {
-        Console.WriteLine("Singleton service is working!");
-    }
-}
-
-public class NotAService // This class will be ignored by auto_dial
-{
-    // ...
-}
-```
-
----
-
-## Supported Service Lifetimes
-
-`auto_dial` has an **opt-in** registration model. To register a service, you must decorate the implementation class with the `[ServiceLifetime]` attribute. This attribute tells `auto_dial` to register the service and specifies its lifetime.
-
--   **Singleton**: One instance for the entire application.
--   **Scoped**: One instance per request (e.g., per HTTP request in a web app).
--   **Transient**: A new instance every time the service is requested.
-
-If a class is not decorated with `[ServiceLifetime]`, it will be ignored.
+If a class is not decorated with `[ServiceLifetime]` and does not match any convention, it will be ignored.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
@@ -461,13 +434,34 @@ This is the most hands-off approach. You define a convention (e.g., all classes 
 -   **Cons:** Less explicit; relies on consistent adherence to conventions. Can accidentally register non-service classes if conventions are not strict.
 
 ```csharp
+using auto_dial;
+using Microsoft.Extensions.DependencyInjection;
+using System;
+
+// Example: Register all classes ending with "Service" as Scoped by default
 services.AddAutoDial(options =>
 {
     options.FromAssemblyOf<MyApplicationAssembly>();
     options.InNamespaceStartingWith("MyApplication.Services");
 
-    // Register all classes ending with "Service" as Scoped by default
     options.RegisterByConvention(type => type.Name.EndsWith("Service"), ServiceLifetime.Scoped);
+});
+
+// Example: Register all classes inheriting from a specific base class as Transient
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyApplicationAssembly>();
+    options.RegisterByConvention(TypeFilters.InheritsOrImplements<MyBaseService>(), ServiceLifetime.Transient);
+});
+
+// Example: Register all classes with a specific custom attribute as Singleton
+[MyCustomServiceAttribute]
+public class MyCustomService : IMyCustomService { }
+
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyApplicationAssembly>();
+    options.RegisterByConvention(TypeFilters.HasAttribute<MyCustomServiceAttribute>(), ServiceLifetime.Singleton);
 });
 ```
 
