@@ -250,3 +250,43 @@ namespace auto_dial.tests.ErrorHandlingTests
     }
 }
 
+namespace auto_dial.tests.HybridRegistrationTests
+{
+    public interface IManualService { }
+    public class ManualService : IManualService { }
+
+    public interface IAutoService { }
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class AutoService : IAutoService
+    {
+        public AutoService(IManualService manualService) { }
+    }
+
+    public class HybridRegistrationTests
+    {
+        [Fact]
+        public void AutoRegisteredServiceCanDependOnManuallyRegisteredService()
+        {
+            var services = new ServiceCollection();
+
+            // Manually register a service
+            services.AddScoped<IManualService, ManualService>();
+
+            // Use auto_dial for other services
+            services.AddAutoDial(options =>
+            {
+                options.FromAssemblyOf<HybridRegistrationTests>();
+                options.InNamespaceStartingWith("auto_dial.tests.HybridRegistrationTests");
+            });
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            // Act
+            var autoService = serviceProvider.GetService<IAutoService>();
+
+            // Assert
+            Assert.NotNull(autoService);
+        }
+    }
+}
+

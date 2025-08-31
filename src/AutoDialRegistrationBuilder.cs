@@ -87,7 +87,7 @@ namespace auto_dial
                 var implementations = FindImplementations(typesToRegister);
 
                 // Use DependencyResolver to get the services in the correct registration order.
-                var dependencyResolver = new DependencyResolver(implementations);
+                var dependencyResolver = new DependencyResolver(implementations, services);
                 var sortedImplementations = dependencyResolver.GetSortedImplementations();
 
                 RegisterServices(sortedImplementations);

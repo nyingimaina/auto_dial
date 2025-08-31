@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace auto_dial
 {
@@ -12,19 +9,22 @@ namespace auto_dial
     internal class DependencyResolver
     {
         private readonly List<AutoDialRegistrationBuilder.ServiceImplementation> _implementations;
+        private readonly IServiceCollection _existingServices;
         // Adjacency list: Key is a dependency, Value is a list of services that depend on it.
         private readonly Dictionary<Type, List<Type>> _dependencyGraph;
         // In-degree of each service: Key is an implementation type, Value is the count of its unresolved dependencies.
         private readonly Dictionary<Type, int> _inDegree;
 
-        public DependencyResolver(List<AutoDialRegistrationBuilder.ServiceImplementation> implementations)
+        public DependencyResolver(List<AutoDialRegistrationBuilder.ServiceImplementation> implementations, IServiceCollection existingServices)
         {
             _implementations = implementations;
+            _existingServices = existingServices;
             _dependencyGraph = new Dictionary<Type, List<Type>>();
             _inDegree = new Dictionary<Type, int>();
 
             var implementationTypes = new HashSet<Type>(implementations.Select(i => i.ImplementationType));
             var interfaceToImplementationMap = implementations.ToDictionary(i => i.InterfaceType, i => i.ImplementationType);
+            var knownExternalTypes = new HashSet<Type>(existingServices.Select(s => s.ServiceType));
 
             foreach (var impl in _implementations)
             {
@@ -44,7 +44,7 @@ namespace auto_dial
                     var dependencyType = parameter.ParameterType;
                     Type? dependentImplType = null;
 
-                    // Check if the dependency is registered as an interface or a concrete type.
+                    // Check if the dependency is registered as an interface or a concrete type within the auto-dial batch.
                     if (interfaceToImplementationMap.ContainsKey(dependencyType))
                     {
                         dependentImplType = interfaceToImplementationMap[dependencyType];
@@ -63,13 +63,14 @@ namespace auto_dial
                         _dependencyGraph[dependentImplType].Add(impl.ImplementationType);
                         _inDegree[impl.ImplementationType]++;
                     }
-                    else
+                    else if (!knownExternalTypes.Contains(dependencyType))
                     {
                         // This is where the unregistered dependency is detected.
                         throw new InvalidOperationException(
                             $"auto_dial Error: Cannot resolve dependency '{(dependencyType.IsInterface ? dependencyType.Name : dependencyType.FullName)}' for the constructor of class '{impl.ImplementationType.Name}'. " +
-                            "Please ensure that the implementation for this service is decorated with the [ServiceLifetime] attribute and is included in the assembly/namespace scan.");
+                            "Please ensure that the implementation for this service is decorated with the [ServiceLifetime] attribute and is included in the assembly/namespace scan, or that it has been registered manually before calling AddAutoDial().");
                     }
+                    // If the type is in knownExternalTypes, we assume it's valid and do nothing.
                 }
             }
         }
