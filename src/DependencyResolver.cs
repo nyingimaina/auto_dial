@@ -10,15 +10,21 @@ namespace auto_dial
     {
         private readonly List<AutoDialRegistrationBuilder.ServiceImplementation> _implementations;
         private readonly IServiceCollection _existingServices;
+        private readonly HashSet<Type> _userIgnoredDependencyTypes;
+        private readonly HashSet<string> _userIgnoredDependencyNamespaces;
+        private readonly List<Func<Type, bool>> _userIgnoredDependencyPredicates;
         // Adjacency list: Key is a dependency, Value is a list of services that depend on it.
         private readonly Dictionary<Type, List<Type>> _dependencyGraph;
         // In-degree of each service: Key is an implementation type, Value is the count of its unresolved dependencies.
         private readonly Dictionary<Type, int> _inDegree;
 
-        public DependencyResolver(List<AutoDialRegistrationBuilder.ServiceImplementation> implementations, IServiceCollection existingServices)
+        public DependencyResolver(List<AutoDialRegistrationBuilder.ServiceImplementation> implementations, IServiceCollection existingServices, HashSet<Type> userIgnoredDependencyTypes, HashSet<string> userIgnoredDependencyNamespaces, List<Func<Type, bool>> userIgnoredDependencyPredicates)
         {
             _implementations = implementations;
             _existingServices = existingServices;
+            _userIgnoredDependencyTypes = userIgnoredDependencyTypes;
+            _userIgnoredDependencyNamespaces = userIgnoredDependencyNamespaces;
+            _userIgnoredDependencyPredicates = userIgnoredDependencyPredicates;
             _dependencyGraph = new Dictionary<Type, List<Type>>();
             _inDegree = new Dictionary<Type, int>();
 
@@ -63,7 +69,7 @@ namespace auto_dial
                         _dependencyGraph[dependentImplType].Add(impl.ImplementationType);
                         _inDegree[impl.ImplementationType]++;
                     }
-                    else if (!knownExternalTypes.Contains(dependencyType))
+                    else if (!IsExempt(dependencyType, knownExternalTypes))
                     {
                         // This is where the unregistered dependency is detected.
                         throw new InvalidOperationException(
@@ -73,6 +79,48 @@ namespace auto_dial
                     // If the type is in knownExternalTypes, we assume it's valid and do nothing.
                 }
             }
+        }
+
+        private bool IsExempt(Type type, HashSet<Type> knownExternalTypes)
+        {
+            // 1. Check user-defined exemptions (highest precedence)
+            if (_userIgnoredDependencyTypes.Contains(type)) return true;
+            if (type.Namespace != null && _userIgnoredDependencyNamespaces.Any(prefix => type.Namespace.StartsWith(prefix))) return true;
+            if (_userIgnoredDependencyPredicates.Any(predicate => predicate(type))) return true;
+
+            // 2. Check if already registered manually
+            if (knownExternalTypes.Contains(type)) return true;
+
+            // 3. Check auto_dial's default framework exemptions
+            // Primitive types and string
+            if (type.IsPrimitive || type == typeof(string)) return true;
+
+            // Common framework types by namespace
+            var ns = type.Namespace;
+            if (ns != null)
+            {
+                if (ns.StartsWith("Microsoft.Extensions.Logging")) return true;
+                if (ns.StartsWith("Microsoft.Extensions.Options")) return true;
+                if (ns.StartsWith("Microsoft.Extensions.Configuration")) return true;
+                if (ns.StartsWith("Microsoft.Extensions.Hosting")) return true;
+                if (ns.StartsWith("Microsoft.Extensions.Http")) return true;
+            }
+
+            // Specific common types (e.g., IServiceProvider, IServiceScopeFactory, IEnumerable<T>)
+            if (type == typeof(IServiceProvider) || type == typeof(IServiceScopeFactory)) return true;
+
+            // Open generics that are commonly resolved by the framework
+            if (type.IsGenericType)
+            {
+                var genericTypeDefinition = type.GetGenericTypeDefinition();
+                if (genericTypeDefinition == typeof(IEnumerable<>)) return true;
+                if (genericTypeDefinition == typeof(IOptions<>)) return true;
+                if (genericTypeDefinition == typeof(IOptionsSnapshot<>)) return true;
+                if (genericTypeDefinition == typeof(IOptionsMonitor<>)) return true;
+                if (genericTypeDefinition == typeof(ILogger<>)) return true;
+            }
+
+            return false;
         }
 
         /// <summary>

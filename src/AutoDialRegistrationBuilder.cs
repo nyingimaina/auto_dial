@@ -15,6 +15,15 @@ namespace auto_dial
         private Action<Exception> OnException { get; set; } = (_) => { };
 
         private HashSet<string> excludedInterfaces = new HashSet<string>();
+
+        // New properties for extensible dependency exemption
+        private readonly HashSet<Type> _ignoredDependencyTypes = new HashSet<Type>();
+        private readonly HashSet<string> _ignoredDependencyNamespaces = new HashSet<string>();
+        private readonly List<Func<Type, bool>> _ignoredDependencyPredicates = new List<Func<Type, bool>>();
+
+        // New properties for convention-based registration
+        private Func<Type, bool>? _conventionPredicate;
+        private ServiceLifetime _conventionDefaultLifetime = ServiceLifetime.Scoped; // Default to Scoped if convention is used
         
         // Cache to store the types we've already reflected
         private static readonly object _cacheLock = new object();
@@ -76,6 +85,56 @@ namespace auto_dial
             return this;
         }
 
+        /// <summary>
+        /// Ignores a specific type during dependency validation. No error will be thrown if this type is a constructor parameter.
+        /// </summary>
+        public AutoDialRegistrationBuilder IgnoreDependency<T>()
+        {
+            _ignoredDependencyTypes.Add(typeof(T));
+            return this;
+        }
+
+        /// <summary>
+        /// Ignores a specific type during dependency validation. No error will be thrown if this type is a constructor parameter.
+        /// </summary>
+        public AutoDialRegistrationBuilder IgnoreDependency(Type type)
+        {
+            _ignoredDependencyTypes.Add(type);
+            return this;
+        }
+
+        /// <summary>
+        /// Ignores all types within a specified namespace prefix during dependency validation.
+        /// </summary>
+        public AutoDialRegistrationBuilder IgnoreDependenciesFromNamespace(string namespacePrefix)
+        {
+            _ignoredDependencyNamespaces.Add(namespacePrefix);
+            return this;
+        }
+
+        /// <summary>
+        /// Ignores types that match a custom predicate during dependency validation.
+        /// </summary>
+        public AutoDialRegistrationBuilder IgnoreDependencyWhere(Func<Type, bool> predicate)
+        {
+            _ignoredDependencyPredicates.Add(predicate);
+            return this;
+        }
+
+        /// <summary>
+        /// Configures auto_dial to register services based on a custom convention.
+        /// Classes matching the predicate will be registered with the specified default lifetime,
+        /// unless they have a [ServiceLifetime] attribute which takes precedence.
+        /// </summary>
+        /// <param name="conventionPredicate">A predicate to identify types that should be registered by convention.</param>
+        /// <param name="defaultLifetime">The default ServiceLifetime to apply to convention-matched types without a [ServiceLifetime] attribute.</param>
+        public AutoDialRegistrationBuilder RegisterByConvention(Func<Type, bool> conventionPredicate, ServiceLifetime defaultLifetime = ServiceLifetime.Scoped)
+        {
+            _conventionPredicate = conventionPredicate;
+            _conventionDefaultLifetime = defaultLifetime;
+            return this;
+        }
+
         public IServiceCollection CompleteAutoRegistration()
         {
             try
@@ -87,7 +146,7 @@ namespace auto_dial
                 var implementations = FindImplementations(typesToRegister);
 
                 // Use DependencyResolver to get the services in the correct registration order.
-                var dependencyResolver = new DependencyResolver(implementations, services);
+                var dependencyResolver = new DependencyResolver(implementations, services, _ignoredDependencyTypes, _ignoredDependencyNamespaces, _ignoredDependencyPredicates);
                 var sortedImplementations = dependencyResolver.GetSortedImplementations();
 
                 RegisterServices(sortedImplementations);
@@ -121,29 +180,45 @@ namespace auto_dial
         {
             var implementations = new List<ServiceImplementation>();
 
-            // Filter for concrete classes that are not excluded and have the ServiceLifetimeAttribute.
+            // Filter for concrete classes that are not excluded.
             var candidateTypes = types.Where(t =>
                 t.IsClass &&
                 !t.IsAbstract &&
                 !HasExcludeAttribute(t) &&
-                HasServiceLifetimeAttribute(t) && // This is the new opt-in check
                 (namespacePrefixes == null || namespacePrefixes.Any(prefix => t.Namespace != null && t.Namespace.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
             );
 
             foreach (var type in candidateTypes)
             {
-                var lifetime = GetServiceLifetime(type); // We know the attribute exists.
-                var interfaceType = type.GetInterfaces().FirstOrDefault(IsInterfaceEligible);
+                ServiceLifetime? lifetime = null;
 
-                if (interfaceType != null)
+                // 1. Check for explicit [ServiceLifetime] attribute (highest precedence)
+                var attribute = (ServiceLifetimeAttribute?)type.GetCustomAttributes(typeof(ServiceLifetimeAttribute), false).FirstOrDefault();
+                if (attribute != null)
                 {
-                    // Register the implementation against its eligible interface.
-                    implementations.Add(new ServiceImplementation(type, interfaceType, lifetime));
+                    lifetime = attribute.Lifetime;
                 }
-                else
+                // 2. Check for convention if no attribute is present
+                else if (_conventionPredicate != null && _conventionPredicate(type))
                 {
-                    // Handle concrete types without a suitable interface. Register the type itself.
-                    implementations.Add(new ServiceImplementation(type, type, lifetime));
+                    lifetime = _conventionDefaultLifetime;
+                }
+
+                // Only proceed if a lifetime has been determined (either by attribute or convention)
+                if (lifetime.HasValue)
+                {
+                    var interfaceType = type.GetInterfaces().FirstOrDefault(IsInterfaceEligible);
+
+                    if (interfaceType != null)
+                    {
+                        // Register the implementation against its eligible interface.
+                        implementations.Add(new ServiceImplementation(type, interfaceType, lifetime.Value));
+                    }
+                    else
+                    {
+                        // Handle concrete types without a suitable interface. Register the type itself.
+                        implementations.Add(new ServiceImplementation(type, type, lifetime.Value));
+                    }
                 }
             }
             return implementations;
@@ -178,21 +253,6 @@ namespace auto_dial
                         break;
                 }
             }
-        }
-
-        private ServiceLifetime GetServiceLifetime(Type implementationType)
-        {
-            var lifetimeAttribute = (ServiceLifetimeAttribute?)implementationType
-                .GetCustomAttributes(typeof(ServiceLifetimeAttribute), false)
-                .FirstOrDefault();
-
-            // This method should only be called for types that have the attribute.
-            return lifetimeAttribute?.Lifetime ?? throw new InvalidOperationException($"Could not find ServiceLifetimeAttribute on type {implementationType.Name}.");
-        }
-
-        private bool HasServiceLifetimeAttribute(Type implementationType)
-        {
-            return implementationType.GetCustomAttributes(typeof(ServiceLifetimeAttribute), false).Any();
         }
 
         private bool HasExcludeAttribute(Type implementationType)

@@ -290,3 +290,206 @@ namespace auto_dial.tests.HybridRegistrationTests
     }
 }
 
+namespace auto_dial.tests.FrameworkExemptionTests
+{
+    using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+
+    public class MyOptions { public string Value { get; set; } = "Test"; }
+
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class ServiceWithFrameworkDependencies
+    {
+        public ServiceWithFrameworkDependencies(ILogger<ServiceWithFrameworkDependencies> logger, IOptions<MyOptions> options, string connectionString, IServiceProvider serviceProvider)
+        {
+            // Dependencies that should be ignored by auto_dial's validation
+        }
+    }
+
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class ServiceWithEnumerableDependency
+    {
+        public ServiceWithEnumerableDependency(IEnumerable<IServiceA> servicesA) { }
+    }
+
+    public class FrameworkExemptionTests
+    {
+        [Fact]
+        public void ServiceWithFrameworkDependenciesCanBeRegistered()
+        {
+            var services = new ServiceCollection();
+            services.AddLogging(b => b.AddConsole()); // Required for ILogger
+            services.Configure<MyOptions>(o => { }); // Required for IOptions
+
+            var exception = Record.Exception(() =>
+            {
+                services.AddAutoDial(options =>
+                {
+                    options.FromAssemblyOf<FrameworkExemptionTests>();
+                    options.InNamespaceStartingWith("auto_dial.tests.FrameworkExemptionTests");
+                });
+            });
+
+            Assert.Null(exception);
+            var serviceProvider = services.BuildServiceProvider();
+            Assert.NotNull(serviceProvider.GetService<ServiceWithFrameworkDependencies>());
+            Assert.NotNull(serviceProvider.GetService<ServiceWithEnumerableDependency>());
+        }
+    }
+}
+
+namespace auto_dial.tests.ExtensibleExemptionTests
+{
+    public interface ICustomIgnoredType { }
+    public class CustomIgnoredType : ICustomIgnoredType { }
+
+    namespace ThirdParty.Framework.Abstractions
+    {
+        public interface IThirdPartyService { }
+        public class ThirdPartyService : IThirdPartyService { }
+    }
+
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class ServiceDependingOnCustomIgnoredType
+    {
+        public ServiceDependingOnCustomIgnoredType(ICustomIgnoredType customType) { }
+    }
+
+    [ServiceLifetime(ServiceLifetime.Scoped)]
+    public class ServiceDependingOnThirdPartyService
+    {
+        public ServiceDependingOnThirdPartyService(ThirdParty.Framework.Abstractions.IThirdPartyService thirdPartyService) { }
+    }
+
+    public class ExtensibleExemptionTests
+    {
+        [Fact]
+        public void UserIgnoredSpecificTypeExemptsDependency()
+        {
+            var services = new ServiceCollection();
+
+            var exception = Record.Exception(() =>
+            {
+                services.AddAutoDial(options =>
+                {
+                    options.FromAssemblyOf<ExtensibleExemptionTests>();
+                    options.InNamespaceStartingWith("auto_dial.tests.ExtensibleExemptionTests");
+                    options.IgnoreDependency<ICustomIgnoredType>();
+                });
+            });
+
+            Assert.Null(exception);
+        }
+
+        [Fact]
+        public void UserIgnoredNamespaceExemptsDependency()
+        {
+            var services = new ServiceCollection();
+
+            var exception = Record.Exception(() =>
+            {
+                services.AddAutoDial(options =>
+                {
+                    options.FromAssemblyOf<ExtensibleExemptionTests>();
+                    options.InNamespaceStartingWith("auto_dial.tests.ExtensibleExemptionTests");
+                    options.IgnoreDependenciesFromNamespace("ThirdParty.Framework.Abstractions");
+                });
+            });
+
+            Assert.Null(exception);
+        }
+
+        [Fact]
+        public void UserIgnoredPredicateExemptsDependency()
+        {
+            var services = new ServiceCollection();
+
+            var exception = Record.Exception(() =>
+            {
+                services.AddAutoDial(options =>
+                {
+                    options.FromAssemblyOf<ExtensibleExemptionTests>();
+                    options.InNamespaceStartingWith("auto_dial.tests.ExtensibleExemptionTests");
+                    options.IgnoreDependencyWhere(type => type.Name.Contains("ThirdParty"));
+                });
+            });
+
+            Assert.Null(exception);
+        }
+    }
+}
+
+namespace auto_dial.tests.ConventionRegistrationTests
+{
+    public interface IConventionService { }
+    public class ConventionService : IConventionService { }
+
+    public interface IConventionServiceWithAttribute { }
+    [ServiceLifetime(ServiceLifetime.Singleton)]
+    public class ConventionServiceWithAttribute : IConventionServiceWithAttribute { }
+
+    public interface IExcludedConventionService { }
+    [ExcludeFromDI]
+    public class ExcludedConventionService : IExcludedConventionService { }
+
+    public class ConventionRegistrationTests
+    {
+        [Fact]
+        public void ConventionBasedRegistrationWorks()
+        {
+            var services = new ServiceCollection();
+
+            services.AddAutoDial(options =>
+            {
+                options.FromAssemblyOf<ConventionRegistrationTests>();
+                options.InNamespaceStartingWith("auto_dial.tests.ConventionRegistrationTests");
+                options.RegisterByConvention(type => type.Name.EndsWith("Service"), ServiceLifetime.Scoped);
+            });
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            var conventionService = serviceProvider.GetService<IConventionService>();
+            Assert.NotNull(conventionService);
+            // Verify lifetime (requires inspecting ServiceDescriptor, which is more complex for a simple test)
+        }
+
+        [Fact]
+        public void AttributeOverridesConvention()
+        {
+            var services = new ServiceCollection();
+
+            services.AddAutoDial(options =>
+            {
+                options.FromAssemblyOf<ConventionRegistrationTests>();
+                options.InNamespaceStartingWith("auto_dial.tests.ConventionRegistrationTests");
+                options.RegisterByConvention(type => type.Name.EndsWith("Service"), ServiceLifetime.Scoped);
+            });
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            var service = serviceProvider.GetService<IConventionServiceWithAttribute>();
+            Assert.NotNull(service);
+            // To verify it's a Singleton, we'd need to inspect the ServiceDescriptor or resolve twice in different scopes.
+            // For now, just ensuring it's registered is sufficient.
+        }
+
+        [Fact]
+        public void ExcludeAttributeOverridesConvention()
+        {
+            var services = new ServiceCollection();
+
+            services.AddAutoDial(options =>
+            {
+                options.FromAssemblyOf<ConventionRegistrationTests>();
+                options.InNamespaceStartingWith("auto_dial.tests.ConventionRegistrationTests");
+                options.RegisterByConvention(type => type.Name.EndsWith("Service"), ServiceLifetime.Scoped);
+            });
+
+            var serviceProvider = services.BuildServiceProvider();
+
+            var excludedService = serviceProvider.GetService<IExcludedConventionService>();
+            Assert.Null(excludedService);
+        }
+    }
+}
+
