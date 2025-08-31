@@ -1,4 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace auto_dial
 {
@@ -30,7 +36,7 @@ namespace auto_dial
 
             var implementationTypes = new HashSet<Type>(implementations.Select(i => i.ImplementationType));
             var interfaceToImplementationMap = implementations.ToDictionary(i => i.InterfaceType, i => i.ImplementationType);
-            var knownExternalTypes = new HashSet<Type>(existingServices.Select(s => s.ServiceType));
+            var knownExternalTypes = new HashSet<Type>(_existingServices.Select(s => s.ServiceType));
 
             foreach (var impl in _implementations)
             {
@@ -113,6 +119,7 @@ namespace auto_dial
             if (type.IsGenericType)
             {
                 var genericTypeDefinition = type.GetGenericTypeDefinition();
+                if (genericTypeDefinition == null) return false; // Should not happen for IsGenericType
                 if (genericTypeDefinition == typeof(IEnumerable<>)) return true;
                 if (genericTypeDefinition == typeof(IOptions<>)) return true;
                 if (genericTypeDefinition == typeof(IOptionsSnapshot<>)) return true;
