@@ -403,11 +403,20 @@ By configuring the log level in `Program.cs`, you can control how much detail yo
 
 ## Troubleshooting
 
--   **Service Not Registered**: 
-    1.  Ensure the service implementation class is decorated with the `[ServiceLifetime]` attribute. This is the most common reason for a service not being registered.
-    2.  Make sure the service is in the correct namespace or assembly being scanned.
-    3.  Check that it does not have the `[ExcludeFromDI]` attribute.
--   **Circular Dependency Detected**: If you encounter an `InvalidOperationException` with a "Circular dependency detected" message, it means your services have a dependency loop. You'll need to refactor your service dependencies to break the cycle.
+`auto_dial` is designed to fail fast and provide clear error messages when it detects a problem with your dependency setup. Here are some common errors and how to resolve them:
+
+-   **Unregistered Dependency**: This is the most common error. It occurs when a service depends on another service that `auto_dial` cannot find.
+    -   **Error Message**: `auto_dial Error: Cannot resolve dependency 'IServiceB' for the constructor of class 'ServiceA'. Please ensure that the implementation for this service is decorated with the [ServiceLifetime] attribute...`
+    -   **Solution**: Find the class that implements the missing dependency (`IServiceB` in this case) and ensure it has the `[ServiceLifetime]` attribute and is located in a namespace that is being scanned.
+
+-   **Service Not Registered**: This can happen for a few reasons.
+    1.  The service implementation class is missing the `[ServiceLifetime]` attribute.
+    2.  The service is in a namespace or assembly that is not being scanned. Check your `FromAssemblyOf<T>()` and `InNamespaceStartingWith()` configurations.
+    3.  The service class is decorated with the `[ExcludeFromDI]` attribute.
+
+-   **Circular Dependency Detected**: This error occurs when two or more services depend on each other in a loop.
+    -   **Error Message**: `auto_dial Error: A circular dependency was detected. The registration order cannot be determined. Dependency chain: ServiceA -> ServiceB -> ServiceA.`
+    -   **Solution**: You must refactor your services to break the dependency cycle. For example, instead of `ServiceA` depending on `ServiceB` directly, you could have `ServiceA` depend on a factory or `Lazy<ServiceB>` to break the cycle at instantiation time.
 
 ---
 
