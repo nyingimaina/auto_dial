@@ -100,10 +100,11 @@ public class ConsumerClass
 
 ### Step 3: Use auto_dial to Register Services
 
-Here’s how you can use `auto_dial` to automatically register your decorated services:
+Here’s how you can use `auto_dial` to automatically register your decorated services. This example also includes setting up the standard .NET console logger to see the output.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using auto_dial;
 
 class Program
@@ -112,20 +113,28 @@ class Program
     {
         var services = new ServiceCollection();
 
-        // Automatically register services in the same assembly
+        // 1. Configure Logging (Optional, but recommended for visibility)
+        services.AddLogging(configure => 
+        {
+            configure.AddConsole();
+            configure.SetMinimumLevel(LogLevel.Information);
+        });
+
+        // 2. Automatically register services in the same assembly
         services.AddAutoDial(options =>
         {
+            options.FromAssemblyOf<MyService>(); // Scan the assembly containing MyService
             options.IfExceptionOccurs((exception) =>
             {
-                // Handle the exception (log it, rethrow, etc.)
-                Console.WriteLine($"An error occurred during service registration: {exception.Message}");
+                // You can get a logger here to handle the exception
+                var logger = services.BuildServiceProvider().GetService<ILogger<Program>>();
+                logger?.LogCritical(exception, "An error occurred during service registration.");
             });
-            options.FromAssemblyOf<MyService>(); // Scan the assembly containing MyService
         });
 
         var serviceProvider = services.BuildServiceProvider();
 
-        // Resolve and use ConsumerClass
+        // 3. Resolve and use your services
         var consumer = serviceProvider.GetRequiredService<ConsumerClass>();
         consumer.Execute();
     }
@@ -337,6 +346,16 @@ public class NotAService // This class will be ignored by auto_dial
     // ...
 }
 ```
+
+---
+
+## Observing `auto_dial`'s Behavior
+
+The core `auto_dial` library does not write to the console or any other output sink. It is completely silent.
+
+To see what the library is doing, you should use a standard logging framework like `Microsoft.Extensions.Logging`. The example console application in this repository (`auto_dial.console.tests`) is configured to use the console logger. When you run it, you will see output from the services as they are created by the DI container. This is not output from `auto_dial` itself, but rather from the example services that have had an `ILogger` injected into them.
+
+By configuring the log level in `Program.cs`, you can control how much detail you see.
 
 ---
 
