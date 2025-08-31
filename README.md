@@ -349,6 +349,48 @@ public class NotAService // This class will be ignored by auto_dial
 
 ---
 
+## Advanced Scenarios & Behavior
+
+### Interface vs. Concrete Type Registration
+
+`auto_dial` follows a clear logic for registration:
+
+1.  It begins by finding a **class** decorated with `[ServiceLifetime]`.
+2.  It then checks if that class implements any eligible interfaces.
+3.  **If a suitable interface is found**, the service is registered against the interface (e.g., `services.AddScoped<IMyService, MyService>()`). This is the default and recommended behavior.
+4.  **If no suitable interface is found**, the service is registered against its own concrete type (e.g., `services.AddScoped<MyService, MyService>()`).
+
+### Handling Multi-Interface Services
+
+It's important to note the **"One Registration Per Class"** rule. Even if a class implements multiple valid interfaces, `auto_dial` will only ever create **one** registration for it. It picks the *first* eligible interface it discovers and ignores the rest.
+
+If you need to control which interface is chosen, you can use the `ExcludeInterface<T>()` configuration option. This is an advanced feature for resolving ambiguity.
+
+**Example:**
+
+```csharp
+public interface ICanShip { }
+public interface ICanBill { }
+
+[ServiceLifetime(ServiceLifetime.Scoped)]
+public class OrderService : ICanShip, ICanBill { /* ... */ }
+
+// By default, OrderService might register as ICanShip.
+// To force it to register as ICanBill, you would do this:
+
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<OrderService>();
+    options.ExcludeInterface<ICanShip>(); // Ignore this one
+});
+```
+
+### Constructor Selection for Dependency Resolution
+
+When a service has multiple constructors, the `DependencyResolver` needs to know which one to analyze to find its dependencies. `auto_dial` uses a simple and common convention: **it selects the constructor with the most parameters.**
+
+---
+
 ## Observing `auto_dial`'s Behavior
 
 The core `auto_dial` library does not write to the console or any other output sink. It is completely silent.
