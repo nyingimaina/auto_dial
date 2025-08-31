@@ -186,7 +186,7 @@ class Program
 
 ## Configuration Options
 
-`auto_dial` gives you several options to customize how services are registered:
+`auto_dial` gives you several options to customize how services are registered and how its dependency validation behaves:
 
 ### 1. Register Services from a Specific Assembly
 
@@ -245,7 +245,48 @@ public class ExcludedService : IMyService
 }
 ```
 
-### 4. Registering Multiple Implementations of an Interface
+### 4. Ignore Dependencies in Validation (Extensible Exemption List)
+
+By default, `auto_dial`'s dependency validator ignores common framework types (like `ILogger<T>`, `IOptions<T>`, `IConfiguration`, `IServiceProvider`, primitive types, etc.). However, you can extend this list for your own custom types or third-party libraries:
+
+-   **Ignore a specific type:**
+
+    ```csharp
+    options.IgnoreDependency<IMyCustomFrameworkType>();
+    options.IgnoreDependency(typeof(AnotherCustomType));
+    ```
+
+-   **Ignore all types from a specific namespace prefix:**
+
+    ```csharp
+    options.IgnoreDependenciesFromNamespace("MyCustomFramework.Abstractions");
+    ```
+
+-   **Ignore types based on a custom predicate (most flexible):**
+
+    ```csharp
+    options.IgnoreDependencyWhere(type => 
+        type.Name.EndsWith("Options") || 
+        (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IMyWrapper<>))
+    );
+    ```
+
+### 5. Convention-Based Registration
+
+This feature allows you to define your own rules for automatically registering services, reducing the need for `[ServiceLifetime]` attributes on every class. The `[ServiceLifetime]` attribute will always override any convention.
+
+```csharp
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyApplicationAssembly>();
+    options.InNamespaceStartingWith("MyApplication.Services");
+
+    // Register all classes ending with "Service" as Scoped, unless an attribute specifies otherwise.
+    options.RegisterByConvention(type => type.Name.EndsWith("Service"), ServiceLifetime.Scoped);
+});
+```
+
+### 6. Registering Multiple Implementations of an Interface
 
 `auto_dial` supports registering multiple concrete implementations for the same interface. The underlying `Microsoft.Extensions.DependencyInjection` container will then allow you to resolve all of them as an `IEnumerable<TService>`. Just decorate each implementation with its own `[ServiceLifetime]` attribute.
 
@@ -304,7 +345,7 @@ class Program
 }
 ```
 
-### 5. Registering Concrete Types (Without an Interface)
+### 7. Registering Concrete Types (Without an Interface)
 
 Sometimes you might have a class that doesn't implement an interface but still needs to be registered in the DI container. `auto_dial` can register these directly as long as they are decorated with `[ServiceLifetime]`.
 
@@ -374,13 +415,130 @@ public class NotAService // This class will be ignored by auto_dial
 
 ---
 
+## Supported Service Lifetimes
+
+`auto_dial` has an **opt-in** registration model. To register a service, you must decorate the implementation class with the `[ServiceLifetime]` attribute. This attribute tells `auto_dial` to register the service and specifies its lifetime.
+
+-   **Singleton**: One instance for the entire application.
+-   **Scoped**: One instance per request (e.g., per HTTP request in a web app).
+-   **Transient**: A new instance every time the service is requested.
+
+If a class is not decorated with `[ServiceLifetime]`, it will be ignored.
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using auto_dial; // Ensure this using directive is present
+
+[ServiceLifetime(ServiceLifetime.Singleton)] // This service will be registered as a Singleton
+public class MySingletonService : IMyService
+{
+    public void DoWork()
+    {
+        Console.WriteLine("Singleton service is working!");
+    }
+}
+
+public class NotAService // This class will be ignored by auto_dial
+{
+    // ...
+}
+```
+
+---
+
 ## Advanced Scenarios & Behavior
+
+### Levels of Granularity: Balancing Magic and Control
+
+`auto_dial` offers various levels of control over service registration, allowing you to choose the right balance between boilerplate reduction ("magic") and explicit configuration. This flexibility ensures you can adapt the library to your project's conventions and needs.
+
+#### 1. Full Magic: Convention-Based Registration (Least Boilerplate)
+
+This is the most hands-off approach. You define a convention (e.g., all classes ending in "Service") and `auto_dial` automatically registers them. This is ideal for projects with strict naming conventions.
+
+-   **How to use:** Use `options.RegisterByConvention(predicate, defaultLifetime)`.
+-   **Pros:** Minimal boilerplate; you only configure the convention once.
+-   **Cons:** Less explicit; relies on consistent adherence to conventions. Can accidentally register non-service classes if conventions are not strict.
+
+```csharp
+services.AddAutoDial(options =>
+{
+    options.FromAssemblyOf<MyApplicationAssembly>();
+    options.InNamespaceStartingWith("MyApplication.Services");
+
+    // Register all classes ending with "Service" as Scoped by default
+    options.RegisterByConvention(type => type.Name.EndsWith("Service"), ServiceLifetime.Scoped);
+});
+```
+
+#### 2. Balanced Control: `[ServiceLifetime]` Attribute (Recommended Default)
+
+This is the explicit opt-in model. You decorate each service with the `[ServiceLifetime]` attribute. This is the recommended default as it provides clear intent and strong type safety.
+
+-   **How to use:** Apply `[ServiceLifetime(Lifetime)]` to each service class.
+-   **Pros:** Explicit, safe, and easy to understand at a glance. No accidental registrations.
+-   **Cons:** Requires adding an attribute to every service class (some boilerplate).
+
+```csharp
+using auto_dial;
+using Microsoft.Extensions.DependencyInjection;
+
+[ServiceLifetime(ServiceLifetime.Scoped)]
+public class MyService : IMyService { /* ... */ }
+
+[ServiceLifetime(ServiceLifetime.Singleton)]
+public class AnotherService : IAnotherService { /* ... */ }
+```
+
+#### 3. Fine-Grained Control: Exclusion Attributes (Opt-Out for Specific Cases)
+
+Even with conventions or attributes, you might need to prevent a specific class from being registered. The `[ExcludeFromDI]` attribute provides this override.
+
+-   **How to use:** Apply `[ExcludeFromDI]` to the service class.
+-   **Pros:** Provides a powerful override for specific cases.
+-   **Cons:** Should be used sparingly; if you find yourself using it often, your conventions might need adjustment.
+
+```csharp
+using auto_dial;
+
+[ExcludeFromDI]
+[ServiceLifetime(ServiceLifetime.Scoped)] // This attribute will be ignored due to [ExcludeFromDI]
+public class ExcludedService : IExcludedService { /* ... */ }
+```
+
+#### 4. Dependency Validation Exclusions (Ignoring Specific Constructor Parameters)
+
+`auto_dial`'s dependency validator is smart enough to ignore common framework types. However, you can extend this for your own custom types or third-party libraries that are resolved by other means.
+
+-   **Ignore a specific type:**
+
+    ```csharp
+    options.IgnoreDependency<IMyCustomFrameworkType>();
+    options.IgnoreDependency(typeof(AnotherCustomType));
+    ```
+
+-   **Ignore all types from a specific namespace prefix:**
+
+    ```csharp
+    options.IgnoreDependenciesFromNamespace("MyCustomFramework.Abstractions");
+    ```
+
+-   **Ignore types based on a custom predicate (most flexible):**
+
+    ```csharp
+    options.IgnoreDependencyWhere(type => 
+        type.Name.EndsWith("Options") || 
+        (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IMyWrapper<>))
+    );
+    ```
+
+---
 
 ### Interface vs. Concrete Type Registration
 
 `auto_dial` follows a clear logic for registration:
 
-1.  It begins by finding a **class** decorated with `[ServiceLifetime]`.
+1.  It begins by finding a **class** that is a candidate for registration (either via `[ServiceLifetime]` attribute or convention).
 2.  It then checks if that class implements any eligible interfaces.
 3.  **If a suitable interface is found**, the service is registered against the interface (e.g., `services.AddScoped<IMyService, MyService>()`). This is the default and recommended behavior.
 4.  **If no suitable interface is found**, the service is registered against its own concrete type (e.g., `services.AddScoped<MyService, MyService>()`).
