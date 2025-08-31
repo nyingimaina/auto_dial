@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using auto_dial;
 using System;
 
@@ -15,7 +16,10 @@ namespace auto_dial.console.tests.Services
     public class SingletonService : ISingletonService
     {
         public Guid Id { get; } = Guid.NewGuid();
-        public SingletonService() => Console.WriteLine($"SingletonService created with Id: {Id}");
+        public SingletonService(ILogger<SingletonService> logger)
+        {
+            logger.LogInformation($"SingletonService created with Id: {Id}");
+        }
     }
 
     public interface IScopedService
@@ -27,7 +31,10 @@ namespace auto_dial.console.tests.Services
     public class ScopedService : IScopedService
     {
         public Guid Id { get; } = Guid.NewGuid();
-        public ScopedService() => Console.WriteLine($"ScopedService created with Id: {Id}");
+        public ScopedService(ILogger<ScopedService> logger)
+        {
+            logger.LogInformation($"ScopedService created with Id: {Id}");
+        }
     }
 
     public interface ITransientService
@@ -39,7 +46,10 @@ namespace auto_dial.console.tests.Services
     public class TransientService : ITransientService
     {
         public Guid Id { get; } = Guid.NewGuid();
-        public TransientService() => Console.WriteLine($"TransientService created with Id: {Id}");
+        public TransientService(ILogger<TransientService> logger)
+        {
+            logger.LogInformation($"TransientService created with Id: {Id}");
+        }
     }
 
     // --- Service with Dependency ---
@@ -49,23 +59,26 @@ namespace auto_dial.console.tests.Services
         void DoSomething();
     }
 
+    [ServiceLifetime(ServiceLifetime.Transient)]
     public class DependentService : IDependentService
     {
         private readonly ISingletonService _singletonService;
         private readonly IScopedService _scopedService;
         private readonly ITransientService _transientService;
+        private readonly ILogger<DependentService> _logger;
 
-        public DependentService(ISingletonService singletonService, IScopedService scopedService, ITransientService transientService)
+        public DependentService(ISingletonService singletonService, IScopedService scopedService, ITransientService transientService, ILogger<DependentService> logger)
         {
             _singletonService = singletonService;
             _scopedService = scopedService;
             _transientService = transientService;
-            Console.WriteLine($"DependentService created. Singleton: {_singletonService.Id}, Scoped: {_scopedService.Id}, Transient: {_transientService.Id}");
+            _logger = logger;
+            _logger.LogInformation($"DependentService created. Singleton: {_singletonService.Id}, Scoped: {_scopedService.Id}, Transient: {_transientService.Id}");
         }
 
         public void DoSomething()
         {
-            Console.WriteLine($"DependentService doing something. Singleton: {_singletonService.Id}, Scoped: {_scopedService.Id}, Transient: {_transientService.Id}");
+            _logger.LogInformation($"DependentService doing something. Singleton: {_singletonService.Id}, Scoped: {_scopedService.Id}, Transient: {_transientService.Id}");
         }
     }
 
@@ -76,11 +89,13 @@ namespace auto_dial.console.tests.Services
         string Send();
     }
 
+    [ServiceLifetime(ServiceLifetime.Transient)]
     public class EmailNotificationService : INotificationService
     {
         public string Send() => "Email notification sent.";
     }
 
+    [ServiceLifetime(ServiceLifetime.Transient)]
     public class SmsNotificationService : INotificationService
     {
         public string Send() => "SMS notification sent.";
@@ -88,10 +103,14 @@ namespace auto_dial.console.tests.Services
 
     // --- Concrete Type (no interface) ---
 
+    [ServiceLifetime(ServiceLifetime.Singleton)]
     public class UtilityService
     {
         public Guid Id { get; } = Guid.NewGuid();
-        public UtilityService() => Console.WriteLine($"UtilityService created with Id: {Id}");
+        public UtilityService(ILogger<UtilityService> logger)
+        {
+            logger.LogInformation($"UtilityService created with Id: {Id}");
+        }
         public string GetCurrentTime() => DateTime.Now.ToLongTimeString();
     }
 
@@ -100,9 +119,13 @@ namespace auto_dial.console.tests.Services
     public interface IExcludedService { }
 
     [ExcludeFromDI]
+    [ServiceLifetime(ServiceLifetime.Scoped)] // Add lifetime to make it a candidate for exclusion
     public class ExcludedService : IExcludedService
     {
-        public ExcludedService() => Console.WriteLine("ExcludedService created (should not happen via DI)");
+        public ExcludedService()
+        {
+            // This should not be logged by DI
+        }
     }
 
     // --- Service in a different namespace for filtering test ---
@@ -111,8 +134,13 @@ namespace auto_dial.console.tests.Services
 namespace auto_dial.console.tests.AnotherNamespace
 {
     public interface IOtherNamespaceService { }
+
+    [ServiceLifetime(ServiceLifetime.Transient)]
     public class OtherNamespaceService : IOtherNamespaceService
     {
-        public OtherNamespaceService() => Console.WriteLine("OtherNamespaceService created.");
+        public OtherNamespaceService(ILogger<OtherNamespaceService> logger)
+        {
+            logger.LogInformation("OtherNamespaceService created.");
+        }
     }
 }
